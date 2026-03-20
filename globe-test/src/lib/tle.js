@@ -6,6 +6,10 @@ function normalizeAngle(angle) {
   return ((angle % TWO_PI) + TWO_PI) % TWO_PI
 }
 
+function normalizeLongitude(lng) {
+  return ((lng + 540) % 360) - 180
+}
+
 function parseEpoch(year, dayOfYear) {
   const fullYear = year < 57 ? 2000 + year : 1900 + year
   const start = Date.UTC(fullYear, 0, 1)
@@ -53,6 +57,40 @@ export function classifyOrbit(altitudeKm) {
   if (altitudeKm >= 2000) return 'MEO'
   if (altitudeKm < 2000) return 'LEO'
   return 'HEO'
+}
+
+export function visibilityRadiusKm(altitudeKm, paddingKm = 0) {
+  const safeAltitude = Math.max(0, altitudeKm)
+  const horizonAngle = Math.acos(EARTH_RADIUS_KM / (EARTH_RADIUS_KM + safeAltitude))
+  return EARTH_RADIUS_KM * horizonAngle + paddingKm
+}
+
+export function footprintPath(position, samples = 72) {
+  const angularDistance = Math.acos(EARTH_RADIUS_KM / (EARTH_RADIUS_KM + Math.max(0, position.altitudeKm)))
+  const latRad = (position.lat * Math.PI) / 180
+  const lngRad = (position.lng * Math.PI) / 180
+  const points = []
+
+  for (let index = 0; index <= samples; index += 1) {
+    const bearing = (index / samples) * TWO_PI
+    const footprintLat = Math.asin(
+      Math.sin(latRad) * Math.cos(angularDistance) +
+        Math.cos(latRad) * Math.sin(angularDistance) * Math.cos(bearing),
+    )
+    const footprintLng =
+      lngRad +
+      Math.atan2(
+        Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(latRad),
+        Math.cos(angularDistance) - Math.sin(latRad) * Math.sin(footprintLat),
+      )
+
+    points.push({
+      lat: (footprintLat * 180) / Math.PI,
+      lng: normalizeLongitude((footprintLng * 180) / Math.PI),
+    })
+  }
+
+  return points
 }
 
 export function parseTle(source, index = 0) {
@@ -126,6 +164,7 @@ export function propagateSatellite(satellite, date) {
   const speedKmS = Math.sqrt(EARTH_MU * ((2 / radius) - 1 / semiMajorAxis))
   const orbitalPeriodMinutes = 1440 / satellite.meanMotion
   const orbitType = classifyOrbit(altitude)
+  const groundVisibilityRadiusKm = visibilityRadiusKm(altitude)
 
   return {
     lat: (latitude * 180) / Math.PI,
@@ -135,6 +174,7 @@ export function propagateSatellite(satellite, date) {
     speedKmS,
     orbitalPeriodMinutes,
     orbitType,
+    visibilityRadiusKm: groundVisibilityRadiusKm,
     ecef: { x: xEcef, y: yEcef, z: zEcef },
     eci: { x: xEci, y: yEci, z: zEci },
   }
@@ -221,12 +261,10 @@ export function estimateNextPass(satellite, observer, startDate, maxHoursAhead =
   for (let timestamp = startDate.getTime(); timestamp <= endTime; timestamp += coarseStepMs) {
     const sampleDate = new Date(timestamp)
     const position = propagateSatellite(satellite, sampleDate)
-    const horizonAngle = Math.acos(EARTH_RADIUS_KM / (EARTH_RADIUS_KM + position.altitudeKm))
-    const visibilityRadiusKm = EARTH_RADIUS_KM * horizonAngle + maxDistancePaddingKm
     const distanceKm = haversineDistanceKm(observer, position)
 
-    if (distanceKm <= visibilityRadiusKm) {
-      coarseMatch = { timestamp, visibilityRadiusKm }
+    if (distanceKm <= visibilityRadiusKm(position.altitudeKm, maxDistancePaddingKm)) {
+      coarseMatch = { timestamp }
       break
     }
   }
@@ -242,11 +280,9 @@ export function estimateNextPass(satellite, observer, startDate, maxHoursAhead =
   ) {
     const sampleDate = new Date(timestamp)
     const position = propagateSatellite(satellite, sampleDate)
-    const horizonAngle = Math.acos(EARTH_RADIUS_KM / (EARTH_RADIUS_KM + position.altitudeKm))
-    const visibilityRadiusKm = EARTH_RADIUS_KM * horizonAngle + maxDistancePaddingKm
     const distanceKm = haversineDistanceKm(observer, position)
 
-    if (distanceKm <= visibilityRadiusKm) {
+    if (distanceKm <= visibilityRadiusKm(position.altitudeKm, maxDistancePaddingKm)) {
       return {
         time: sampleDate,
         distanceKm,
@@ -256,10 +292,9 @@ export function estimateNextPass(satellite, observer, startDate, maxHoursAhead =
 
   return {
     time: new Date(coarseMatch.timestamp),
-    distanceKm: coarseMatch.visibilityRadiusKm,
+    distanceKm: visibilityRadiusKm(propagateSatellite(satellite, new Date(coarseMatch.timestamp)).altitudeKm, maxDistancePaddingKm),
   }
 }
-
 
 export const DEFAULT_COLORS = ['#ff6b6b', '#4ecdc4', '#ffd166', '#7b8cff', '#9b5de5', '#00bbf9']
 
