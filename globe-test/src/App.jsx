@@ -375,8 +375,8 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
+    <div className="app-shell container-fluid px-3 px-lg-4 py-4">
+      <header className="topbar d-flex flex-column flex-xxl-row align-items-start justify-content-between gap-3 gap-lg-4 mb-4">
         <div>
           <p className="eyebrow">Satellite situational awareness</p>
           <h1>Карта и 3D-пространство спутников по TLE</h1>
@@ -393,7 +393,7 @@ export default function App() {
       </header>
 
       <main className="dashboard-grid">
-        <section className="controls-panel panel">
+        <section className="controls-panel panel shadow-lg">
           <div className="panel-block">
             <h2>Источник TLE</h2>
             <label>
@@ -538,7 +538,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="visual-panel panel">
+        <section className="visual-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Положения спутников на карте</h2>
             <p>Колесо мыши — масштаб, перетаскивание — перемещение, клик — выбрать точку наблюдения.</p>
@@ -618,7 +618,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="space-panel panel">
+        <section className="space-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Положения спутников в пространстве</h2>
             <p>3D-глобус показывает текущую геометрию и траектории орбит вокруг Земли.</p>
@@ -626,7 +626,7 @@ export default function App() {
           <div ref={globeContainerRef} className="globe-canvas" />
         </section>
 
-        <section className="details-panel panel">
+        <section className="details-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Карточка спутника</h2>
             <p>Выберите спутник на карте или в списке справа, чтобы увидеть его текущие параметры.</p>
@@ -734,13 +734,13 @@ export default function App() {
           )}
         </section>
 
-        <section className="list-panel panel">
+        <section className="list-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Список спутников</h2>
             <p>{filteredTelemetry.length} объектов после применения фильтров и группировки.</p>
           </div>
 
-          <div className="satellite-list">
+          <div className="satellite-list pe-1">
             {groupedTelemetry.map((group) => (
               <section key={group.title} className="satellite-group">
                 <div className="satellite-group__header">{group.title}</div>
