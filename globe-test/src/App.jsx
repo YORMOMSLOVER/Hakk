@@ -4,6 +4,7 @@ import './App.css'
 import {
   DEFAULT_TLE_SETS,
   estimateNextPass,
+  footprintPath,
   orbitPath,
   parseTle,
   parseTleText,
@@ -81,11 +82,28 @@ function buildWorldGrid() {
   return { verticalLines, horizontalLines }
 }
 
+function latLngToMapPoint(lat, lng) {
+  return {
+    x: ((lng + 180) / 360) * 1000,
+    y: ((90 - lat) / 180) * 500,
+  }
+}
+
+function coveragePolygonPoints(path) {
+  return path
+    .map((point) => {
+      const coordinates = latLngToMapPoint(point.lat, point.lng)
+      return `${coordinates.x},${coordinates.y}`
+    })
+    .join(' ')
+}
+
 export default function App() {
   const globeContainerRef = useRef(null)
   const globeInstanceRef = useRef(null)
   const mapViewportRef = useRef(null)
   const dragStateRef = useRef(null)
+  const skipMapClickRef = useRef(false)
 
   const [sourceType, setSourceType] = useState('preset')
   const [activeSetId, setActiveSetId] = useState(DEFAULT_TLE_SETS[0].id)
@@ -100,9 +118,11 @@ export default function App() {
   const [selectedOperator, setSelectedOperator] = useState('Все')
   const [selectedMission, setSelectedMission] = useState('Все')
   const [groupBy, setGroupBy] = useState('none')
-  const [mapTransform, setMapTransform] = useState({ scale: 1.35, offsetX: 0, offsetY: 0 })
+  const [mapTransform, setMapTransform] = useState({ scale: 1.12, offsetX: 0, offsetY: 0 })
   const [observer, setObserver] = useState({ lat: 55.75, lng: 37.62, label: 'Москва' })
   const [uploadStatus, setUploadStatus] = useState('')
+  const [showCoverage, setShowCoverage] = useState(true)
+  const [globeViewport, setGlobeViewport] = useState({ width: 0, height: 0, isPortrait: false })
 
   const worldGrid = useMemo(() => buildWorldGrid(), [])
 
@@ -115,7 +135,6 @@ export default function App() {
     () => activeRawSatellites.map((satellite, index) => parseTle(satellite, index)),
     [activeRawSatellites],
   )
-
 
   useEffect(() => {
     const containerElement = globeContainerRef.current
@@ -145,6 +164,11 @@ export default function App() {
       .labelColor('color')
       .labelSize(1.2)
       .labelDotRadius(0.2)
+      .polygonCapColor((polygon) => polygon.capColor)
+      .polygonSideColor((polygon) => polygon.sideColor)
+      .polygonStrokeColor((polygon) => polygon.strokeColor)
+      .polygonAltitude(0.001)
+      .polygonLabel((polygon) => polygon.name)
 
     globe.controls().enablePan = true
     globe.controls().zoomSpeed = 0.8
@@ -158,6 +182,34 @@ export default function App() {
       containerElement.innerHTML = ''
       globeInstanceRef.current = null
     }
+  }, [])
+
+  useEffect(() => {
+    const containerElement = globeContainerRef.current
+    const globe = globeInstanceRef.current
+
+    if (!containerElement || !globe) return undefined
+
+    const updateGlobeSize = () => {
+      const width = containerElement.clientWidth
+      const isPortrait = width <= 980
+      const height = isPortrait ? Math.min(width, 520) : Math.max(420, Math.round(width * 0.72))
+
+      setGlobeViewport({ width, height, isPortrait })
+      globe.width(width)
+      globe.height(height)
+      globe.pointOfView({ lat: 25, lng: 20, altitude: isPortrait ? 2.65 : 2.2 }, 350)
+    }
+
+    updateGlobeSize()
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateGlobeSize()
+    })
+
+    resizeObserver.observe(containerElement)
+
+    return () => resizeObserver.disconnect()
   }, [])
 
   useEffect(() => {
@@ -195,6 +247,8 @@ export default function App() {
           speedKmS: position.speedKmS,
           orbitalPeriodMinutes: position.orbitalPeriodMinutes,
           orbitType: position.orbitType,
+          visibilityRadiusKm: position.visibilityRadiusKm,
+          coveragePath: footprintPath(position),
           country: satellite.metadata.country,
           operator: satellite.metadata.operator,
           mission: satellite.metadata.mission,
@@ -266,6 +320,11 @@ export default function App() {
     [filteredTelemetry, safeSelectedSatelliteId],
   )
 
+  const coverageTelemetry = useMemo(() => {
+    if (!showCoverage) return []
+    return selectedSatellite ? [selectedSatellite] : []
+  }, [selectedSatellite, showCoverage])
+
   useEffect(() => {
     const globe = globeInstanceRef.current
     if (!globe) return
@@ -297,7 +356,20 @@ export default function App() {
       })),
     )
     globe.pathPoints('points')
-  }, [filteredTelemetry])
+
+    globe.polygonsData(
+      coverageTelemetry.map((satellite) => ({
+        name: `${satellite.name}: зона покрытия ≈ ${formatNumber(satellite.visibilityRadiusKm, 0)} км`,
+        capColor: `${satellite.color}33`,
+        sideColor: `${satellite.color}12`,
+        strokeColor: satellite.color,
+        geometry: {
+          type: 'Polygon',
+          coordinates: [satellite.coveragePath.map((point) => [point.lng, point.lat])],
+        },
+      })),
+    )
+  }, [coverageTelemetry, filteredTelemetry])
 
   const handlePresetChange = (event) => {
     setSourceType('preset')
@@ -326,7 +398,7 @@ export default function App() {
     event.preventDefault()
     setMapTransform((previous) => ({
       ...previous,
-      scale: Math.max(1, Math.min(4.2, previous.scale - event.deltaY * 0.0015)),
+      scale: Math.max(1, Math.min(3.4, previous.scale - event.deltaY * 0.0012)),
     }))
   }
 
@@ -339,6 +411,7 @@ export default function App() {
       y: event.clientY,
       offsetX: mapTransform.offsetX,
       offsetY: mapTransform.offsetY,
+      moved: false,
     }
 
     target.setPointerCapture(event.pointerId)
@@ -350,6 +423,11 @@ export default function App() {
     const deltaX = event.clientX - dragStateRef.current.x
     const deltaY = event.clientY - dragStateRef.current.y
 
+    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+      dragStateRef.current.moved = true
+      skipMapClickRef.current = true
+    }
+
     setMapTransform((previous) => ({
       ...previous,
       offsetX: dragStateRef.current.offsetX + deltaX,
@@ -358,11 +436,14 @@ export default function App() {
   }
 
   const handleMapPointerUp = () => {
+    window.setTimeout(() => {
+      skipMapClickRef.current = false
+    }, 0)
     dragStateRef.current = null
   }
 
   const handleMapClick = (event) => {
-    if (dragStateRef.current) return
+    if (skipMapClickRef.current) return
     const viewport = mapViewportRef.current
     if (!viewport) return
 
@@ -535,6 +616,17 @@ export default function App() {
                 ))}
               </select>
             </label>
+
+            <button
+              type="button"
+              className={showCoverage ? 'is-active' : ''}
+              onClick={() => setShowCoverage((value) => !value)}
+            >
+              {showCoverage ? 'Скрыть зону покрытия' : 'Показать зону покрытия'}
+            </button>
+            <p className="helper-text">
+              Зона покрытия отображается для выбранного спутника на 2D-карте и на 3D-глобусе.
+            </p>
           </div>
         </section>
 
@@ -569,6 +661,19 @@ export default function App() {
                 <path d="M86 140l38-32 78 6 40 34-6 43-65 27-31 49-61-6-25-55zM278 142l58-48 97-8 58 21 7 63-78 42-41 71-85 8-56-57 17-56zM531 92l54 18 31 44 58-10 40 18 88 6 58 34-28 44-88 14-51 41-88 12-57-41-39-75 6-53zM723 332l69-20 86 27 32 71-41 51-102 4-61-42-8-54zM823 113l73 27 14 39-43 26-52-14-16-41z" />
               </svg>
 
+              {coverageTelemetry.length > 0 ? (
+                <svg className="map-coverage" viewBox="0 0 1000 500" preserveAspectRatio="none">
+                  {coverageTelemetry.map((satellite) => (
+                    <polygon
+                      key={`${satellite.id}-coverage`}
+                      className="map-coverage__polygon"
+                      points={coveragePolygonPoints(satellite.coveragePath)}
+                      style={{ '--coverage-color': satellite.color }}
+                    />
+                  ))}
+                </svg>
+              ) : null}
+
               {filteredTelemetry.map((satellite) => (
                 <button
                   key={satellite.id}
@@ -583,7 +688,7 @@ export default function App() {
                     event.stopPropagation()
                     setSelectedSatelliteId(satellite.id)
                   }}
-                  title={satellite.name}
+                  title={`${satellite.name} • зона покрытия ≈ ${formatNumber(satellite.visibilityRadiusKm, 0)} км`}
                 >
                   <span />
                   <em>{satellite.name}</em>
@@ -621,9 +726,15 @@ export default function App() {
         <section className="space-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Положения спутников в пространстве</h2>
-            <p>3D-глобус показывает текущую геометрию и траектории орбит вокруг Земли.</p>
+            <p>
+              3D-глобус показывает текущую геометрию, траектории орбит и площадь покрытия выбранного спутника.
+            </p>
           </div>
-          <div ref={globeContainerRef} className="globe-canvas" />
+          <div
+            ref={globeContainerRef}
+            className={`globe-canvas ${globeViewport.isPortrait ? 'is-portrait' : ''}`}
+            style={{ minHeight: globeViewport.height || undefined }}
+          />
         </section>
 
         <section className="details-panel panel shadow-lg">
@@ -681,6 +792,10 @@ export default function App() {
                 <div>
                   <dt>Скорость</dt>
                   <dd>{formatNumber(selectedSatellite.speedKmS, 2)} км/с</dd>
+                </div>
+                <div>
+                  <dt>Покрытие</dt>
+                  <dd>{formatNumber(selectedSatellite.visibilityRadiusKm, 0)} км по поверхности</dd>
                 </div>
                 <div>
                   <dt>Следующий пролёт</dt>
@@ -773,6 +888,10 @@ export default function App() {
                       <div>
                         <dt>Высота</dt>
                         <dd>{formatNumber(satellite.altitudeKm, 0)} км</dd>
+                      </div>
+                      <div>
+                        <dt>Покрытие</dt>
+                        <dd>{formatNumber(satellite.visibilityRadiusKm, 0)} км</dd>
                       </div>
                     </dl>
                   </article>
