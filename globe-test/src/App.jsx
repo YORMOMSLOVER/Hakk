@@ -98,6 +98,45 @@ function coveragePolygonPoints(path) {
     .join(' ')
 }
 
+function buildSpaceDiagram(position) {
+  if (!position) return null
+
+  const viewBoxSize = 320
+  const center = viewBoxSize / 2
+  const earthRadius = 46
+  const axisLength = 122
+  const distanceKm = Math.sqrt(
+    position.coordinates3d.x ** 2 + position.coordinates3d.y ** 2 + position.coordinates3d.z ** 2,
+  )
+  const maxDistance = Math.max(distanceKm, 42164)
+  const normalized = {
+    x: position.coordinates3d.x / maxDistance,
+    y: position.coordinates3d.y / maxDistance,
+    z: position.coordinates3d.z / maxDistance,
+  }
+  const projectPoint = (vector) => ({
+    x: center + (vector.x - vector.y) * axisLength * 0.72,
+    y: center + vector.z * axisLength - (vector.x + vector.y) * axisLength * 0.28,
+  })
+
+  const axes = [
+    { key: 'x', label: 'X', color: '#ff7b72', vector: { x: 1, y: 0, z: 0 } },
+    { key: 'y', label: 'Y', color: '#6ee7ff', vector: { x: 0, y: 1, z: 0 } },
+    { key: 'z', label: 'Z', color: '#facc15', vector: { x: 0, y: 0, z: 1 } },
+  ].map((axis) => ({
+    ...axis,
+    point: projectPoint(axis.vector),
+  }))
+
+  return {
+    center,
+    earthRadius,
+    distanceKm,
+    satellitePoint: projectPoint(normalized),
+    axes,
+  }
+}
+
 export default function App() {
   const globeContainerRef = useRef(null)
   const globeInstanceRef = useRef(null)
@@ -325,6 +364,11 @@ export default function App() {
     return selectedSatellite ? [selectedSatellite] : []
   }, [selectedSatellite, showCoverage])
 
+  const selectedSatelliteSpaceDiagram = useMemo(
+    () => buildSpaceDiagram(selectedSatellite),
+    [selectedSatellite],
+  )
+
   useEffect(() => {
     const globe = globeInstanceRef.current
     if (!globe) return
@@ -370,6 +414,20 @@ export default function App() {
       })),
     )
   }, [coverageTelemetry, filteredTelemetry])
+
+  useEffect(() => {
+    const globe = globeInstanceRef.current
+    if (!globe || !selectedSatellite) return
+
+    globe.pointOfView(
+      {
+        lat: selectedSatellite.lat,
+        lng: selectedSatellite.lng,
+        altitude: Math.max(1.15, Math.min(2.1, 1.2 + selectedSatellite.altitudeRatio * 0.9)),
+      },
+      900,
+    )
+  }, [selectedSatellite])
 
   const handlePresetChange = (event) => {
     setSourceType('preset')
@@ -735,6 +793,108 @@ export default function App() {
             className={`globe-canvas ${globeViewport.isPortrait ? 'is-portrait' : ''}`}
             style={{ minHeight: globeViewport.height || undefined }}
           />
+
+          {selectedSatellite && selectedSatelliteSpaceDiagram ? (
+            <article className="space-focus-card">
+              <div className="space-focus-card__header">
+                <div>
+                  <p className="eyebrow">Фокус по выбранному объекту</p>
+                  <h3>{selectedSatellite.name}</h3>
+                </div>
+                <p>
+                  ECI-вектор обновляется в реальном времени и показывает, где спутник находится
+                  относительно центра Земли.
+                </p>
+              </div>
+
+              <div className="space-focus-card__body">
+                <svg className="space-diagram" viewBox="0 0 320 320" role="img" aria-label="Положение спутника в пространстве">
+                  <defs>
+                    <radialGradient id="earthGlow" cx="50%" cy="45%" r="60%">
+                      <stop offset="0%" stopColor="rgba(110, 168, 255, 0.95)" />
+                      <stop offset="70%" stopColor="rgba(47, 93, 197, 0.9)" />
+                      <stop offset="100%" stopColor="rgba(12, 24, 64, 0.95)" />
+                    </radialGradient>
+                  </defs>
+
+                  <circle cx={selectedSatelliteSpaceDiagram.center} cy={selectedSatelliteSpaceDiagram.center} r={126} className="space-diagram__halo" />
+                  {selectedSatelliteSpaceDiagram.axes.map((axis) => (
+                    <g key={axis.key}>
+                      <line
+                        x1={selectedSatelliteSpaceDiagram.center}
+                        y1={selectedSatelliteSpaceDiagram.center}
+                        x2={axis.point.x}
+                        y2={axis.point.y}
+                        stroke={axis.color}
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                      />
+                      <text x={axis.point.x} y={axis.point.y} dx="8" dy="-6" fill={axis.color}>
+                        {axis.label}
+                      </text>
+                    </g>
+                  ))}
+                  <line
+                    x1={selectedSatelliteSpaceDiagram.center}
+                    y1={selectedSatelliteSpaceDiagram.center}
+                    x2={selectedSatelliteSpaceDiagram.satellitePoint.x}
+                    y2={selectedSatelliteSpaceDiagram.satellitePoint.y}
+                    className="space-diagram__vector"
+                  />
+                  <circle
+                    cx={selectedSatelliteSpaceDiagram.center}
+                    cy={selectedSatelliteSpaceDiagram.center}
+                    r={selectedSatelliteSpaceDiagram.earthRadius}
+                    fill="url(#earthGlow)"
+                    className="space-diagram__earth"
+                  />
+                  <circle
+                    cx={selectedSatelliteSpaceDiagram.satellitePoint.x}
+                    cy={selectedSatelliteSpaceDiagram.satellitePoint.y}
+                    r="8"
+                    fill={selectedSatellite.color}
+                    className="space-diagram__satellite"
+                  />
+                  <text
+                    x={selectedSatelliteSpaceDiagram.satellitePoint.x}
+                    y={selectedSatelliteSpaceDiagram.satellitePoint.y}
+                    dx="12"
+                    dy="-12"
+                    className="space-diagram__label"
+                  >
+                    {selectedSatellite.name}
+                  </text>
+                </svg>
+
+                <div className="space-stats-grid">
+                  <div className="space-stat">
+                    <span>Радиус-вектор</span>
+                    <strong>{formatNumber(selectedSatelliteSpaceDiagram.distanceKm, 0)} км</strong>
+                  </div>
+                  <div className="space-stat">
+                    <span>Высота над Землёй</span>
+                    <strong>{formatNumber(selectedSatellite.altitudeKm, 0)} км</strong>
+                  </div>
+                  <div className="space-stat">
+                    <span>ECI X</span>
+                    <strong>{formatNumber(selectedSatellite.coordinates3d.x, 0)} км</strong>
+                  </div>
+                  <div className="space-stat">
+                    <span>ECI Y</span>
+                    <strong>{formatNumber(selectedSatellite.coordinates3d.y, 0)} км</strong>
+                  </div>
+                  <div className="space-stat">
+                    <span>ECI Z</span>
+                    <strong>{formatNumber(selectedSatellite.coordinates3d.z, 0)} км</strong>
+                  </div>
+                  <div className="space-stat">
+                    <span>Скорость</span>
+                    <strong>{formatNumber(selectedSatellite.speedKmS, 2)} км/с</strong>
+                  </div>
+                </div>
+              </div>
+            </article>
+          ) : null}
         </section>
 
         <section className="details-panel panel shadow-lg">

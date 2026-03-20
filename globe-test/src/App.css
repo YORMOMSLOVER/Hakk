@@ -351,8 +351,105 @@ input {
   background: radial-gradient(circle at top, rgba(110, 168, 255, 0.18), transparent 45%), #020614;
 }
 
+
 .globe-canvas.is-portrait {
   aspect-ratio: 1 / 1;
+}
+
+.space-focus-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(8, 19, 48, 0.92), rgba(5, 12, 32, 0.9));
+}
+
+.space-focus-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.space-focus-card__header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.space-focus-card__header p:last-child {
+  max-width: 360px;
+}
+
+.space-focus-card__body {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.space-diagram {
+  width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+.space-diagram text {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.space-diagram__halo {
+  fill: rgba(110, 168, 255, 0.04);
+  stroke: rgba(110, 168, 255, 0.14);
+  stroke-width: 1.5;
+}
+
+.space-diagram__earth {
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 1.2;
+}
+
+.space-diagram__vector {
+  stroke: rgba(255, 255, 255, 0.72);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-dasharray: 6 6;
+}
+
+.space-diagram__satellite {
+  filter: drop-shadow(0 0 10px currentColor);
+}
+
+.space-diagram__label {
+  fill: #f7fbff;
+}
+
+.space-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.space-stat {
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.space-stat span {
+  display: block;
+  margin-bottom: 6px;
+  color: rgba(231, 240, 255, 0.76);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.space-stat strong {
+  font-size: 1rem;
 }
 
 .detail-card {
@@ -508,7 +605,9 @@ input {
   .detail-grid,
   .satellite-card__stats,
   .button-row,
-  .inline-fields {
+  .inline-fields,
+  .space-stats-grid,
+  .space-focus-card__body {
     grid-template-columns: 1fr;
   }
 
@@ -524,6 +623,10 @@ input {
   .globe-canvas {
     aspect-ratio: 1 / 1;
     min-height: min(78vw, 520px);
+  }
+
+  .space-focus-card__header {
+    flex-direction: column;
   }
 
   .map-satellite em,
