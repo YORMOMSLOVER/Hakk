@@ -203,6 +203,21 @@ export default function App() {
       .labelColor('color')
       .labelSize(1.2)
       .labelDotRadius(0.2)
+      .htmlLat('lat')
+      .htmlLng('lng')
+      .htmlAltitude('altitude')
+      .htmlElement((item) => {
+        const element = document.createElement('div')
+        element.className = 'globe-selection-badge'
+        element.innerHTML = `
+          <span class="globe-selection-badge__dot" style="--badge-color: ${item.color};"></span>
+          <div class="globe-selection-badge__card">
+            <strong>${item.name}</strong>
+            <span>${formatNumber(item.altitudeKm, 0)} км • ${item.orbitType}</span>
+          </div>
+        `
+        return element
+      })
       .polygonCapColor((polygon) => polygon.capColor)
       .polygonSideColor((polygon) => polygon.sideColor)
       .polygonStrokeColor((polygon) => polygon.strokeColor)
@@ -413,21 +428,23 @@ export default function App() {
         },
       })),
     )
-  }, [coverageTelemetry, filteredTelemetry])
 
-  useEffect(() => {
-    const globe = globeInstanceRef.current
-    if (!globe || !selectedSatellite) return
-
-    globe.pointOfView(
-      {
-        lat: selectedSatellite.lat,
-        lng: selectedSatellite.lng,
-        altitude: Math.max(1.15, Math.min(2.1, 1.2 + selectedSatellite.altitudeRatio * 0.9)),
-      },
-      900,
+    globe.htmlElementsData(
+      selectedSatellite
+        ? [
+            {
+              lat: selectedSatellite.lat,
+              lng: selectedSatellite.lng,
+              altitude: selectedSatellite.altitudeRatio + 0.08,
+              color: selectedSatellite.color,
+              name: selectedSatellite.name,
+              altitudeKm: selectedSatellite.altitudeKm,
+              orbitType: selectedSatellite.orbitType,
+            },
+          ]
+        : [],
     )
-  }, [selectedSatellite])
+  }, [coverageTelemetry, filteredTelemetry, selectedSatellite])
 
   const handlePresetChange = (event) => {
     setSourceType('preset')
@@ -785,7 +802,7 @@ export default function App() {
           <div className="panel-heading">
             <h2>Положения спутников в пространстве</h2>
             <p>
-              3D-глобус показывает текущую геометрию, траектории орбит и площадь покрытия выбранного спутника.
+              Вращайте глобус свободно: выбранный спутник подсвечивается карточкой прямо над планетой в 3D вместе с траекторией и зоной покрытия.
             </p>
           </div>
           <div
