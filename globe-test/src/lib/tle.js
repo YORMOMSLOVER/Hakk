@@ -1,9 +1,9 @@
 const EARTH_RADIUS_KM = 6371
 const EARTH_MU = 398600.4418
+const TWO_PI = Math.PI * 2
 
 function normalizeAngle(angle) {
-  const twoPi = Math.PI * 2
-  return ((angle % twoPi) + twoPi) % twoPi
+  return ((angle % TWO_PI) + TWO_PI) % TWO_PI
 }
 
 function parseEpoch(year, dayOfYear) {
@@ -14,11 +14,13 @@ function parseEpoch(year, dayOfYear) {
 
 function solveKepler(meanAnomaly, eccentricity, iterations = 8) {
   let eccentricAnomaly = meanAnomaly
+
   for (let i = 0; i < iterations; i += 1) {
     eccentricAnomaly -=
       (eccentricAnomaly - eccentricity * Math.sin(eccentricAnomaly) - meanAnomaly) /
       (1 - eccentricity * Math.cos(eccentricAnomaly))
   }
+
   return eccentricAnomaly
 }
 
@@ -38,7 +40,23 @@ function gmst(date) {
   return normalizeAngle((thetaDegrees * Math.PI) / 180)
 }
 
-export function parseTle({ name, line1, line2, color }) {
+function formatMetadata(source) {
+  return {
+    country: source.country ?? 'Неизвестно',
+    operator: source.operator ?? 'Неизвестно',
+    mission: source.mission ?? 'Не указано',
+  }
+}
+
+export function classifyOrbit(altitudeKm) {
+  if (altitudeKm >= 35786 - 1500 && altitudeKm <= 35786 + 1500) return 'GEO'
+  if (altitudeKm >= 2000) return 'MEO'
+  if (altitudeKm < 2000) return 'LEO'
+  return 'HEO'
+}
+
+export function parseTle(source, index = 0) {
+  const { name, line1, line2 } = source
   const epochYear = Number.parseInt(line1.slice(18, 20), 10)
   const epochDay = Number.parseFloat(line1.slice(20, 32))
   const inclination = Number.parseFloat(line2.slice(8, 16))
@@ -47,25 +65,30 @@ export function parseTle({ name, line1, line2, color }) {
   const argumentOfPerigee = Number.parseFloat(line2.slice(34, 42))
   const meanAnomaly = Number.parseFloat(line2.slice(43, 51))
   const meanMotion = Number.parseFloat(line2.slice(52, 63))
+  const color = source.color ?? DEFAULT_COLORS[index % DEFAULT_COLORS.length]
+  const metadata = formatMetadata(source)
 
   return {
+    id: source.id ?? `${name}-${line1.slice(2, 7).trim()}-${index}`,
     name,
     color,
     line1,
     line2,
     epoch: parseEpoch(epochYear, epochDay),
     inclination: (inclination * Math.PI) / 180,
+    inclinationDeg: inclination,
     raan: (raan * Math.PI) / 180,
     eccentricity,
     argumentOfPerigee: (argumentOfPerigee * Math.PI) / 180,
     meanAnomaly: (meanAnomaly * Math.PI) / 180,
     meanMotion,
+    metadata,
   }
 }
 
 export function propagateSatellite(satellite, date) {
   const deltaSeconds = (date.getTime() - satellite.epoch.getTime()) / 1000
-  const meanMotionRad = (satellite.meanMotion * Math.PI * 2) / 86400
+  const meanMotionRad = (satellite.meanMotion * TWO_PI) / 86400
   const semiMajorAxis = Math.cbrt(EARTH_MU / (meanMotionRad * meanMotionRad))
   const meanAnomaly = normalizeAngle(satellite.meanAnomaly + meanMotionRad * deltaSeconds)
   const eccentricAnomaly = solveKepler(meanAnomaly, satellite.eccentricity)
@@ -101,13 +124,19 @@ export function propagateSatellite(satellite, date) {
   const longitude = Math.atan2(yEcef, xEcef)
   const altitude = radius - EARTH_RADIUS_KM
   const speedKmS = Math.sqrt(EARTH_MU * ((2 / radius) - 1 / semiMajorAxis))
+  const orbitalPeriodMinutes = 1440 / satellite.meanMotion
+  const orbitType = classifyOrbit(altitude)
 
   return {
     lat: (latitude * 180) / Math.PI,
     lng: (longitude * 180) / Math.PI,
     altitudeKm: altitude,
-    altitudeRatio: Math.max(0.035, altitude / EARTH_RADIUS_KM),
+    altitudeRatio: Math.max(0.03, altitude / EARTH_RADIUS_KM),
     speedKmS,
+    orbitalPeriodMinutes,
+    orbitType,
+    ecef: { x: xEcef, y: yEcef, z: zEcef },
+    eci: { x: xEci, y: yEci, z: zEci },
   }
 }
 
@@ -128,23 +157,212 @@ export function orbitPath(satellite, date, stepMinutes = 4, samples = 45) {
   return points
 }
 
-export const DEFAULT_TLES = [
+export function parseTleText(text, fallbackSetName = 'Импортированный набор') {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const satellites = []
+
+  for (let index = 0; index < lines.length; ) {
+    const current = lines[index]
+    let name = `SAT-${satellites.length + 1}`
+    let line1 = ''
+    let line2 = ''
+
+    if (current.startsWith('1 ')) {
+      line1 = current
+      line2 = lines[index + 1] ?? ''
+      index += 2
+    } else {
+      name = current
+      line1 = lines[index + 1] ?? ''
+      line2 = lines[index + 2] ?? ''
+      index += 3
+    }
+
+    if (!line1.startsWith('1 ') || !line2.startsWith('2 ')) continue
+
+    satellites.push({
+      id: `${fallbackSetName}-${satellites.length}`,
+      name,
+      line1,
+      line2,
+      mission: 'Импорт TLE',
+      operator: 'Пользовательский файл',
+      country: 'Не указано',
+    })
+  }
+
+  return satellites
+}
+
+function haversineDistanceKm(pointA, pointB) {
+  const lat1 = (pointA.lat * Math.PI) / 180
+  const lat2 = (pointB.lat * Math.PI) / 180
+  const dLat = lat2 - lat1
+  const dLng = ((pointB.lng - pointA.lng) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(a)))
+}
+
+export function estimateNextPass(satellite, observer, startDate, maxHoursAhead = 48) {
+  const coarseStepMs = 2 * 60000
+  const fineStepMs = 15000
+  const maxDistancePaddingKm = 220
+  const endTime = startDate.getTime() + maxHoursAhead * 3600000
+
+  let coarseMatch = null
+
+  for (let timestamp = startDate.getTime(); timestamp <= endTime; timestamp += coarseStepMs) {
+    const sampleDate = new Date(timestamp)
+    const position = propagateSatellite(satellite, sampleDate)
+    const horizonAngle = Math.acos(EARTH_RADIUS_KM / (EARTH_RADIUS_KM + position.altitudeKm))
+    const visibilityRadiusKm = EARTH_RADIUS_KM * horizonAngle + maxDistancePaddingKm
+    const distanceKm = haversineDistanceKm(observer, position)
+
+    if (distanceKm <= visibilityRadiusKm) {
+      coarseMatch = { timestamp, visibilityRadiusKm }
+      break
+    }
+  }
+
+  if (!coarseMatch) return null
+
+  const fineWindowStart = Math.max(startDate.getTime(), coarseMatch.timestamp - coarseStepMs)
+
+  for (
+    let timestamp = fineWindowStart;
+    timestamp <= coarseMatch.timestamp + coarseStepMs;
+    timestamp += fineStepMs
+  ) {
+    const sampleDate = new Date(timestamp)
+    const position = propagateSatellite(satellite, sampleDate)
+    const horizonAngle = Math.acos(EARTH_RADIUS_KM / (EARTH_RADIUS_KM + position.altitudeKm))
+    const visibilityRadiusKm = EARTH_RADIUS_KM * horizonAngle + maxDistancePaddingKm
+    const distanceKm = haversineDistanceKm(observer, position)
+
+    if (distanceKm <= visibilityRadiusKm) {
+      return {
+        time: sampleDate,
+        distanceKm,
+      }
+    }
+  }
+
+  return {
+    time: new Date(coarseMatch.timestamp),
+    distanceKm: coarseMatch.visibilityRadiusKm,
+  }
+}
+
+
+export const DEFAULT_COLORS = ['#ff6b6b', '#4ecdc4', '#ffd166', '#7b8cff', '#9b5de5', '#00bbf9']
+
+export const DEFAULT_TLE_SETS = [
   {
-    name: 'ISS (ZARYA)',
-    color: '#ff6b6b',
-    line1: '1 25544U 98067A   26079.51782528  .00010580  00000+0  19412-3 0  9998',
-    line2: '2 25544  51.6334 287.1253 0004235 188.8597 244.1967 15.49893145547103',
+    id: 'featured',
+    name: 'Популярные миссии',
+    satellites: [
+      {
+        name: 'ISS (ZARYA)',
+        color: '#ff6b6b',
+        country: 'Международная',
+        operator: 'NASA / Roscosmos',
+        mission: 'Пилотируемая станция',
+        line1: '1 25544U 98067A   26079.51782528  .00010580  00000+0  19412-3 0  9998',
+        line2: '2 25544  51.6334 287.1253 0004235 188.8597 244.1967 15.49893145547103',
+      },
+      {
+        name: 'HUBBLE',
+        color: '#4ecdc4',
+        country: 'США',
+        operator: 'NASA / ESA',
+        mission: 'Научный',
+        line1: '1 20580U 90037B   26079.51606152  .00000831  00000+0  36032-4 0  9996',
+        line2: '2 20580  28.4682 217.9334 0002141 315.5657  44.4935 15.25293767872488',
+      },
+      {
+        name: 'NOAA 15',
+        color: '#ffd166',
+        country: 'США',
+        operator: 'NOAA',
+        mission: 'Погода',
+        line1: '1 25338U 98030A   26079.48933830  .00000095  00000+0  74181-4 0  9997',
+        line2: '2 25338  98.5313  62.4244 0010997 271.1088  88.8755 14.26414398444880',
+      },
+    ],
   },
   {
-    name: 'HUBBLE',
-    color: '#4ecdc4',
-    line1: '1 20580U 90037B   26079.51606152  .00000831  00000+0  36032-4 0  9996',
-    line2: '2 20580  28.4682 217.9334 0002141 315.5657  44.4935 15.25293767872488',
+    id: 'navigation',
+    name: 'Навигация и связь',
+    satellites: [
+      {
+        name: 'GPS BIIR-2  (PRN 13)',
+        color: '#7b8cff',
+        country: 'США',
+        operator: 'USSF',
+        mission: 'Навигация',
+        line1: '1 24876U 97035A   26079.49727914 -.00000037  00000+0  00000+0 0  9990',
+        line2: '2 24876  54.1214 196.4742 0153000  53.0324 308.3820  2.00564938209602',
+      },
+      {
+        name: 'GALAXY 30 (G-30)',
+        color: '#9b5de5',
+        country: 'США',
+        operator: 'Intelsat',
+        mission: 'Связь',
+        line1: '1 46114U 20038A   26079.25631167 -.00000113  00000+0  00000+0 0  9999',
+        line2: '2 46114   0.0205 338.0798 0001065 246.7950 245.1217  1.00270866 20965',
+      },
+      {
+        name: 'GLONASS 134',
+        color: '#00bbf9',
+        country: 'Россия',
+        operator: 'Роскосмос',
+        mission: 'Навигация',
+        line1: '1 57517U 23096A   26079.46816895  .00000020  00000+0  00000+0 0  9992',
+        line2: '2 57517  64.7897 238.5244 0007030 270.1465  89.8105  2.13104394 21025',
+      },
+    ],
   },
   {
-    name: 'NOAA 15',
-    color: '#ffd166',
-    line1: '1 25338U 98030A   26079.48933830  .00000095  00000+0  74181-4 0  9997',
-    line2: '2 25338  98.5313  62.4244 0010997 271.1088  88.8755 14.26414398444880',
+    id: 'earth-observation',
+    name: 'ДЗЗ и мониторинг',
+    satellites: [
+      {
+        name: 'TERRA',
+        color: '#f15bb5',
+        country: 'США',
+        operator: 'NASA',
+        mission: 'Дистанционное зондирование',
+        line1: '1 25994U 99068A   26079.56229178  .00000153  00000+0  40464-4 0  9999',
+        line2: '2 25994  98.2099 134.2159 0001171  91.9194 268.2154 14.57112009399566',
+      },
+      {
+        name: 'Sentinel-2A',
+        color: '#fee440',
+        country: 'ЕС',
+        operator: 'ESA',
+        mission: 'Дистанционное зондирование',
+        line1: '1 40697U 15028A   26079.53143606  .00000134  00000+0  56095-4 0  9994',
+        line2: '2 40697  98.5694 143.7317 0001253  90.4489 269.6813 14.30815680559840',
+      },
+      {
+        name: 'METOP-B',
+        color: '#00f5d4',
+        country: 'ЕС',
+        operator: 'EUMETSAT',
+        mission: 'Погода',
+        line1: '1 38771U 12049A   26079.28449614  .00000130  00000+0  71839-4 0  9990',
+        line2: '2 38771  98.6872 144.7582 0001180 100.9387 259.1934 14.21483733698367',
+      },
+    ],
   },
 ]
+
+export const DEFAULT_TLES = DEFAULT_TLE_SETS[0].satellites
