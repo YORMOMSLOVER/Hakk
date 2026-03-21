@@ -257,8 +257,6 @@ export default function App() {
   const [passPredictions, setPassPredictions] = useState([])
   const [passStatus, setPassStatus] = useState('idle')
   const [isPassListExpanded, setIsPassListExpanded] = useState(false)
-  const [satelliteListSearchQuery, setSatelliteListSearchQuery] = useState('')
-  const [isSatelliteListExpanded, setIsSatelliteListExpanded] = useState(false)
 
   const worldGrid = useMemo(() => buildWorldGrid(), [])
 
@@ -685,12 +683,6 @@ export default function App() {
       setIsPassListExpanded(false)
     }
   }, [hasHiddenObserverUpcomingPasses, isPassListExpanded])
-
-  useEffect(() => {
-    if (!hasHiddenSatelliteCards && isSatelliteListExpanded) {
-      setIsSatelliteListExpanded(false)
-    }
-  }, [hasHiddenSatelliteCards, isSatelliteListExpanded])
 
   const comparisonMode = groupBy === 'none' ? 'orbitType' : groupBy
   const comparisonRows = useMemo(() => {
