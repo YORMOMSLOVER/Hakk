@@ -50,6 +50,14 @@ function formatGroupMode(mode) {
   return 'без группировки'
 }
 
+function formatGroupOption(mode) {
+  if (mode === 'country') return 'По стране'
+  if (mode === 'operator') return 'По оператору'
+  if (mode === 'orbitType') return 'По типу орбиты'
+  if (mode === 'mission') return 'По назначению'
+  return 'Без группировки'
+}
+
 function formatDurationFromNow(targetDate, referenceDate) {
   const diffMinutes = Math.round((targetDate.getTime() - referenceDate.getTime()) / 60000)
 
@@ -946,7 +954,7 @@ export default function App() {
     <div className="app-shell container-fluid px-3 px-lg-4 py-4">
       <header className="topbar d-flex flex-column flex-xxl-row align-items-start justify-content-between gap-3 gap-lg-4 mb-4">
         <div>
-          <p className="eyebrow">Satellite situational awareness</p>
+          <p className="eyebrow">Ситуационная осведомлённость о спутниках</p>
           <h1>Карта и 3D-пространство спутников по TLE</h1>
           <p className="panel-copy">
             Показывает текущие положения, анимацию движения, фильтрацию, сравнение групп и
@@ -965,7 +973,7 @@ export default function App() {
           <div className="panel-block">
             <h2>Источник TLE</h2>
             <label>
-              Предустановленный набор
+              Готовый набор
               <select value={activeSetId} onChange={handlePresetChange}>
                 {DEFAULT_TLE_SETS.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -976,7 +984,7 @@ export default function App() {
             </label>
 
             <label>
-              Загрузить TLE файл
+              Загрузить TLE-файл
               <input type="file" accept=".txt,.tle,.3le" onChange={handleFileUpload} />
             </label>
 
@@ -1018,7 +1026,7 @@ export default function App() {
             </div>
 
             <label>
-              Скорость симуляции
+              Скорость моделирования
               <select
                 value={simulationSpeed}
                 onChange={(event) => setSimulationSpeed(Number(event.target.value))}
@@ -1033,7 +1041,7 @@ export default function App() {
 
             <div className="timeline-card">
               <div className="timeline-card__header">
-                <strong>Таймлайн ±12 часов</strong>
+                <strong>Шкала времени ±12 часов</strong>
                 <button type="button" onClick={() => setSimulationAnchorTime(simulatedTime)}>
                   Центрировать
                 </button>
@@ -1107,7 +1115,7 @@ export default function App() {
               <select value={groupBy} onChange={(event) => setGroupBy(event.target.value)}>
                 {GROUP_OPTIONS.map((value) => (
                   <option key={value} value={value}>
-                    {value === 'none' ? 'Без группировки' : value}
+                    {formatGroupOption(value)}
                   </option>
                 ))}
               </select>
@@ -1540,6 +1548,7 @@ export default function App() {
                 <summary>TLE</summary>
                 <pre>{selectedSatellite.tle}</pre>
               </details>
+
             </article>
           ) : (
             <p className="helper-text">Нет спутников, удовлетворяющих текущим фильтрам.</p>
