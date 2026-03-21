@@ -180,6 +180,8 @@ input {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .space-panel {
@@ -215,6 +217,11 @@ input {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  min-width: 0;
+}
+
+.map-toolbar > * {
+  min-width: 0;
 }
 
 .map-toolbar__actions {
@@ -233,6 +240,8 @@ input {
 .map-viewport {
   position: relative;
   overflow: hidden;
+  width: 100%;
+  min-width: 0;
   min-height: 360px;
   aspect-ratio: 2 / 1;
   border-radius: 22px;
