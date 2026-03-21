@@ -1,16 +1,29 @@
-# React + Vite
+# Satellite situational awareness demo
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Интерактивное React/Vite-приложение для визуализации спутников по TLE на 2D-карте и 3D-глобусе.
 
-Currently, two official plugins are available:
+## Что умеет
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- отображать текущие положения спутников на 2D-карте и 3D-глобусе;
+- анимировать движение в реальном времени и в режиме симуляции;
+- перематывать время кнопками и таймлайном ±12 часов;
+- фильтровать объекты по стране, оператору, типу орбиты и назначению;
+- группировать и сравнивать спутники по ключевым метрикам;
+- показывать карточку выбранного спутника, ECI-координаты, покрытие и следующий пролёт;
+- выбирать точку на карте и получать список ближайших пролётов над ней;
+- загружать пользовательские TLE-файлы;
+- включать стресс-набор на 120 объектов для проверки производительности.
 
-## React Compiler
+## Скрипты
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+npm run dev
+npm run lint
+npm run build
+```
 
-## Expanding the ESLint configuration
+## Замечания по производительности
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- 3D-глобус загружается лениво, чтобы ускорить первоначальный старт интерфейса.
+- При большом числе спутников приложение автоматически упрощает визуализацию: скрывает часть подписей и орбитальные следы.

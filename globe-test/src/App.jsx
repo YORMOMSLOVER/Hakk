@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Globe from 'globe.gl'
 import './App.css'
 import {
   DEFAULT_TLE_SETS,
@@ -16,6 +15,9 @@ const SIMULATION_REFRESH_MS = 120
 const SIMULATION_SPEEDS = [1, 10, 60, 300]
 const GROUP_OPTIONS = ['none', 'country', 'operator', 'orbitType', 'mission']
 const ORBIT_FILTERS = ['Все', 'LEO', 'MEO', 'GEO', 'HEO']
+const SIMULATION_WINDOW_MINUTES = 12 * 60
+const PASS_LOOKAHEAD_HOURS = 36
+const PASS_LIST_LIMIT = 8
 const WORLD_MAP_MARKERS = [
   { name: 'Байконур', lat: 45.92, lng: 63.34 },
   { name: 'Канаверал', lat: 28.39, lng: -80.6 },
@@ -34,6 +36,25 @@ function formatDateTime(date) {
     dateStyle: 'medium',
     timeStyle: 'medium',
   }).format(date)
+}
+
+function formatGroupMode(mode) {
+  if (mode === 'country') return 'по стране'
+  if (mode === 'operator') return 'по оператору'
+  if (mode === 'orbitType') return 'по типу орбиты'
+  if (mode === 'mission') return 'по назначению'
+  return 'без группировки'
+}
+
+function formatDurationFromNow(targetDate, referenceDate) {
+  const diffMinutes = Math.round((targetDate.getTime() - referenceDate.getTime()) / 60000)
+
+  if (diffMinutes <= 0) return 'сейчас'
+  if (diffMinutes < 60) return `через ${diffMinutes} мин`
+
+  const hours = Math.floor(diffMinutes / 60)
+  const minutes = diffMinutes % 60
+  return minutes > 0 ? `через ${hours} ч ${minutes} мин` : `через ${hours} ч`
 }
 
 function groupLabel(telemetry, mode) {
@@ -183,6 +204,7 @@ export default function App() {
   const [simulationMode, setSimulationMode] = useState('realtime')
   const [isPlaying, setIsPlaying] = useState(true)
   const [simulationSpeed, setSimulationSpeed] = useState(60)
+  const [simulationAnchorTime, setSimulationAnchorTime] = useState(() => new Date())
   const [simulatedTime, setSimulatedTime] = useState(() => new Date())
   const [selectedSatelliteId, setSelectedSatelliteId] = useState(null)
   const [selectedOrbitFilter, setSelectedOrbitFilter] = useState('Все')
@@ -191,17 +213,20 @@ export default function App() {
   const [selectedMission, setSelectedMission] = useState('Все')
   const [groupBy, setGroupBy] = useState('none')
   const [mapTransform, setMapTransform] = useState({ scale: 1.12, offsetX: 0, offsetY: 0 })
+  const [observer, setObserver] = useState({ lat: 55.75, lng: 37.62, label: 'Москва' })
+  const [uploadStatus, setUploadStatus] = useState('')
+  const [showCoverage, setShowCoverage] = useState(true)
+  const [globeViewport, setGlobeViewport] = useState({ width: 0, height: 0, isPortrait: false })
+  const [globeStatus, setGlobeStatus] = useState('loading')
+  const [passPredictions, setPassPredictions] = useState([])
+  const [passStatus, setPassStatus] = useState('idle')
+
+  const worldGrid = useMemo(() => buildWorldGrid(), [])
 
   const clampTransform = (transform) => {
     const viewport = mapViewportRef.current
     return clampMapTransform(transform, viewport)
   }
-  const [observer, setObserver] = useState({ lat: 55.75, lng: 37.62, label: 'Москва' })
-  const [uploadStatus, setUploadStatus] = useState('')
-  const [showCoverage, setShowCoverage] = useState(true)
-  const [globeViewport, setGlobeViewport] = useState({ width: 0, height: 0, isPortrait: false })
-
-  const worldGrid = useMemo(() => buildWorldGrid(), [])
 
   const activeRawSatellites = useMemo(() => {
     if (sourceType === 'file' && customSatellites.length > 0) return customSatellites
@@ -213,70 +238,88 @@ export default function App() {
     [activeRawSatellites],
   )
 
+
   useEffect(() => {
     const containerElement = globeContainerRef.current
 
     if (!containerElement || globeInstanceRef.current) return undefined
 
-    const globe = Globe()(containerElement)
-      .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
-      .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
-      .showAtmosphere(true)
-      .atmosphereColor('#6ea8ff')
-      .atmosphereAltitude(0.18)
-      .pointRadius(0.6)
-      .pointResolution(20)
-      .pointAltitude('altitude')
-      .pointsTransitionDuration(0)
-      .pointColor('color')
-      .pointLabel((point) => point.name)
-      .pathColor('color')
-      .pathStroke(0.9)
-      .pathTransitionDuration(0)
-      .pathDashAnimateTime(0)
-      .pathPointLat((point) => point.lat)
-      .pathPointLng((point) => point.lng)
-      .pathPointAlt((point) => point.altitude)
-      .labelLat('lat')
-      .labelLng('lng')
-      .labelAltitude('altitude')
-      .labelText('text')
-      .labelColor('color')
-      .labelSize(1.2)
-      .labelsTransitionDuration(0)
-      .labelDotRadius(0.2)
-      .htmlLat('lat')
-      .htmlLng('lng')
-      .htmlAltitude('altitude')
-      .htmlTransitionDuration(0)
-      .htmlElement((item) => {
-        const element = document.createElement('div')
-        element.className = 'globe-selection-badge'
-        element.innerHTML = `
-          <span class="globe-selection-badge__dot" style="--badge-color: ${item.color};"></span>
-          <div class="globe-selection-badge__card">
-            <strong>${item.name}</strong>
-            <span>${formatNumber(item.altitudeKm, 0)} км • ${item.orbitType}</span>
-          </div>
-        `
-        return element
-      })
-      .polygonCapColor((polygon) => polygon.capColor)
-      .polygonSideColor((polygon) => polygon.sideColor)
-      .polygonStrokeColor((polygon) => polygon.strokeColor)
-      .polygonAltitude(0.001)
-      .polygonLabel((polygon) => polygon.name)
-      .polygonsTransitionDuration(0)
+    let cancelled = false
+    setGlobeStatus('loading')
 
-    globe.controls().enablePan = true
-    globe.controls().zoomSpeed = 0.8
-    globe.controls().minDistance = 180
-    globe.controls().maxDistance = 700
-    globe.pointOfView({ lat: 25, lng: 20, altitude: 2.2 }, 0)
+    const bootGlobe = async () => {
+      try {
+        const { default: Globe } = await import('globe.gl')
+        if (cancelled || !containerElement) return
 
-    globeInstanceRef.current = globe
+        const globe = Globe()(containerElement)
+          .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+          .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+          .showAtmosphere(true)
+          .atmosphereColor('#6ea8ff')
+          .atmosphereAltitude(0.18)
+          .pointRadius(0.6)
+          .pointResolution(18)
+          .pointAltitude('altitude')
+          .pointsTransitionDuration(0)
+          .pointColor('color')
+          .pointLabel((point) => point.name)
+          .pathColor('color')
+          .pathStroke(0.9)
+          .pathTransitionDuration(0)
+          .pathDashAnimateTime(0)
+          .pathPointLat((point) => point.lat)
+          .pathPointLng((point) => point.lng)
+          .pathPointAlt((point) => point.altitude)
+          .labelLat('lat')
+          .labelLng('lng')
+          .labelAltitude('altitude')
+          .labelText('text')
+          .labelColor('color')
+          .labelSize(1.2)
+          .labelsTransitionDuration(0)
+          .labelDotRadius(0.2)
+          .htmlLat('lat')
+          .htmlLng('lng')
+          .htmlAltitude('altitude')
+          .htmlTransitionDuration(0)
+          .htmlElement((item) => {
+            const element = document.createElement('div')
+            element.className = 'globe-selection-badge'
+            element.innerHTML = `
+              <span class="globe-selection-badge__dot" style="--badge-color: ${item.color};"></span>
+              <div class="globe-selection-badge__card">
+                <strong>${item.name}</strong>
+                <span>${formatNumber(item.altitudeKm, 0)} км • ${item.orbitType}</span>
+              </div>
+            `
+            return element
+          })
+          .polygonCapColor((polygon) => polygon.capColor)
+          .polygonSideColor((polygon) => polygon.sideColor)
+          .polygonStrokeColor((polygon) => polygon.strokeColor)
+          .polygonAltitude(0.001)
+          .polygonLabel((polygon) => polygon.name)
+          .polygonsTransitionDuration(0)
+
+        globe.controls().enablePan = true
+        globe.controls().zoomSpeed = 0.8
+        globe.controls().minDistance = 180
+        globe.controls().maxDistance = 700
+        globe.pointOfView({ lat: 25, lng: 20, altitude: 2.2 }, 0)
+
+        globeInstanceRef.current = globe
+        setGlobeStatus('ready')
+      } catch (error) {
+        console.error(error)
+        if (!cancelled) setGlobeStatus('error')
+      }
+    }
+
+    bootGlobe()
 
     return () => {
+      cancelled = true
       containerElement.innerHTML = ''
       globeInstanceRef.current = null
     }
@@ -308,7 +351,7 @@ export default function App() {
     resizeObserver.observe(containerElement)
 
     return () => resizeObserver.disconnect()
-  }, [])
+  }, [globeStatus])
 
   useEffect(() => {
     const viewport = mapViewportRef.current
@@ -358,7 +401,6 @@ export default function App() {
     () =>
       satellites.map((satellite) => {
         const position = propagateSatellite(satellite, simulatedTime)
-        const nextPass = estimateNextPass(satellite, observer, simulatedTime)
 
         return {
           id: satellite.id,
@@ -380,10 +422,65 @@ export default function App() {
           coordinates3d: position.eci,
           orbit: orbitPath(satellite, simulatedTime),
           tle: `${satellite.line1}\n${satellite.line2}`,
-          nextPass,
         }
       }),
-    [observer, satellites, simulatedTime],
+    [satellites, simulatedTime],
+  )
+
+  const telemetryLookup = useMemo(
+    () => new Map(telemetry.map((item) => [item.id, item])),
+    [telemetry],
+  )
+
+  const passComputationKey = useMemo(() => {
+    const bucketMinutes = simulationMode === 'realtime' ? 5 : 10
+    return Math.floor(simulatedTime.getTime() / (bucketMinutes * 60000))
+  }, [simulatedTime, simulationMode])
+
+  useEffect(() => {
+    let cancelled = false
+
+    setPassStatus('loading')
+
+    const timerId = window.setTimeout(() => {
+      const nextPasses = satellites
+        .map((satellite) => {
+          const nextPass = estimateNextPass(satellite, observer, simulatedTime, PASS_LOOKAHEAD_HOURS)
+          if (!nextPass) return null
+
+          return {
+            id: satellite.id,
+            time: nextPass.time,
+            distanceKm: nextPass.distanceKm,
+          }
+        })
+        .filter(Boolean)
+        .sort((left, right) => left.time.getTime() - right.time.getTime())
+
+      if (!cancelled) {
+        setPassPredictions(nextPasses)
+        setPassStatus('ready')
+      }
+    }, 0)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timerId)
+    }
+  }, [observer, passComputationKey, satellites, simulatedTime])
+
+  const passPredictionLookup = useMemo(
+    () => new Map(passPredictions.map((item) => [item.id, item])),
+    [passPredictions],
+  )
+
+  const telemetryWithPasses = useMemo(
+    () =>
+      telemetry.map((item) => ({
+        ...item,
+        nextPass: passPredictionLookup.get(item.id) ?? null,
+      })),
+    [passPredictionLookup, telemetry],
   )
 
   const filterOptions = useMemo(() => {
@@ -391,7 +488,7 @@ export default function App() {
     const operators = new Set(['Все'])
     const missions = new Set(['Все'])
 
-    telemetry.forEach((item) => {
+    telemetryWithPasses.forEach((item) => {
       countries.add(item.country)
       operators.add(item.operator)
       missions.add(item.mission)
@@ -402,23 +499,23 @@ export default function App() {
       operators: [...operators],
       missions: [...missions],
     }
-  }, [telemetry])
+  }, [telemetryWithPasses])
 
   const safeSelectedSatelliteId =
-    selectedSatelliteId && telemetry.some((item) => item.id === selectedSatelliteId)
+    selectedSatelliteId && telemetryWithPasses.some((item) => item.id === selectedSatelliteId)
       ? selectedSatelliteId
-      : telemetry[0]?.id ?? null
+      : telemetryWithPasses[0]?.id ?? null
 
   const filteredTelemetry = useMemo(
     () =>
-      telemetry.filter((item) => {
+      telemetryWithPasses.filter((item) => {
         if (selectedOrbitFilter !== 'Все' && item.orbitType !== selectedOrbitFilter) return false
         if (selectedCountry !== 'Все' && item.country !== selectedCountry) return false
         if (selectedOperator !== 'Все' && item.operator !== selectedOperator) return false
         if (selectedMission !== 'Все' && item.mission !== selectedMission) return false
         return true
       }),
-    [telemetry, selectedCountry, selectedMission, selectedOperator, selectedOrbitFilter],
+    [telemetryWithPasses, selectedCountry, selectedMission, selectedOperator, selectedOrbitFilter],
   )
 
   const groupedTelemetry = useMemo(() => {
@@ -444,15 +541,100 @@ export default function App() {
     [filteredTelemetry, safeSelectedSatelliteId],
   )
 
+  const selectedSatelliteSpaceDiagram = useMemo(
+    () => buildSpaceDiagram(selectedSatellite),
+    [selectedSatellite],
+  )
+
   const coverageTelemetry = useMemo(() => {
     if (!showCoverage) return []
     return selectedSatellite ? [selectedSatellite] : []
   }, [selectedSatellite, showCoverage])
 
-  const selectedSatelliteSpaceDiagram = useMemo(
-    () => buildSpaceDiagram(selectedSatellite),
-    [selectedSatellite],
+  const renderMode = useMemo(() => {
+    const total = filteredTelemetry.length
+    return {
+      showMapLabels: total <= 18,
+      showGlobeLabels: total <= 36,
+      showOrbits: total <= 80,
+      status:
+        total > 100 ? 'Оптимизированный режим для 100+ объектов' : 'Полный режим визуализации',
+    }
+  }, [filteredTelemetry.length])
+
+  const observerUpcomingPasses = useMemo(
+    () =>
+      passPredictions
+        .map((item) => {
+          const telemetryItem = telemetryLookup.get(item.id)
+          if (!telemetryItem) return null
+
+          return {
+            ...telemetryItem,
+            nextPass: item,
+          }
+        })
+        .filter(Boolean)
+        .filter((item) => {
+          if (selectedOrbitFilter !== 'Все' && item.orbitType !== selectedOrbitFilter) return false
+          if (selectedCountry !== 'Все' && item.country !== selectedCountry) return false
+          if (selectedOperator !== 'Все' && item.operator !== selectedOperator) return false
+          if (selectedMission !== 'Все' && item.mission !== selectedMission) return false
+          return true
+        })
+        .slice(0, PASS_LIST_LIMIT),
+    [passPredictions, selectedCountry, selectedMission, selectedOperator, selectedOrbitFilter, telemetryLookup],
   )
+
+  const comparisonMode = groupBy === 'none' ? 'orbitType' : groupBy
+  const comparisonRows = useMemo(() => {
+    const rows = new Map()
+
+    filteredTelemetry.forEach((item) => {
+      const key = groupLabel(item, comparisonMode)
+      const current = rows.get(key) ?? {
+        title: key,
+        count: 0,
+        altitudeSum: 0,
+        speedSum: 0,
+        maxCoverageKm: 0,
+      }
+
+      current.count += 1
+      current.altitudeSum += item.altitudeKm
+      current.speedSum += item.speedKmS
+      current.maxCoverageKm = Math.max(current.maxCoverageKm, item.visibilityRadiusKm)
+      rows.set(key, current)
+    })
+
+    return [...rows.values()]
+      .map((row) => ({
+        ...row,
+        averageAltitudeKm: row.altitudeSum / row.count,
+        averageSpeedKmS: row.speedSum / row.count,
+      }))
+      .sort((left, right) => right.count - left.count)
+  }, [comparisonMode, filteredTelemetry])
+
+  const timelineValue = useMemo(() => {
+    const diffMinutes = Math.round((simulatedTime.getTime() - simulationAnchorTime.getTime()) / 60000)
+    return Math.max(-SIMULATION_WINDOW_MINUTES, Math.min(SIMULATION_WINDOW_MINUTES, diffMinutes))
+  }, [simulatedTime, simulationAnchorTime])
+
+  const selectedPassAlert = useMemo(() => {
+    if (!selectedSatellite?.nextPass?.time) return null
+
+    const diffMinutes = Math.round(
+      (selectedSatellite.nextPass.time.getTime() - simulatedTime.getTime()) / 60000,
+    )
+
+    if (diffMinutes < 0 || diffMinutes > 120) return null
+
+    return {
+      ...selectedSatellite.nextPass,
+      diffMinutes,
+    }
+  }, [selectedSatellite, simulatedTime])
 
   useEffect(() => {
     const globe = globeInstanceRef.current
@@ -469,20 +651,24 @@ export default function App() {
     )
 
     globe.labelsData(
-      filteredTelemetry.map((satellite) => ({
-        lat: satellite.lat,
-        lng: satellite.lng,
-        altitude: satellite.altitudeRatio + 0.015,
-        text: satellite.name,
-        color: satellite.color,
-      })),
+      renderMode.showGlobeLabels
+        ? filteredTelemetry.map((satellite) => ({
+            lat: satellite.lat,
+            lng: satellite.lng,
+            altitude: satellite.altitudeRatio + 0.015,
+            text: satellite.name,
+            color: satellite.color,
+          }))
+        : [],
     )
 
     globe.pathsData(
-      filteredTelemetry.map((satellite) => ({
-        color: satellite.color,
-        points: satellite.orbit,
-      })),
+      renderMode.showOrbits
+        ? filteredTelemetry.map((satellite) => ({
+            color: satellite.color,
+            points: satellite.orbit,
+          }))
+        : [],
     )
     globe.pathPoints('points')
 
@@ -514,7 +700,7 @@ export default function App() {
           ]
         : [],
     )
-  }, [coverageTelemetry, filteredTelemetry, selectedSatellite])
+  }, [coverageTelemetry, filteredTelemetry, renderMode.showGlobeLabels, renderMode.showOrbits, selectedSatellite])
 
   const handlePresetChange = (event) => {
     setSourceType('preset')
@@ -536,6 +722,7 @@ export default function App() {
 
     setCustomSatellites(parsed)
     setSourceType('file')
+    setSelectedSatelliteId(parsed[0]?.id ?? null)
     setUploadStatus(`Загружено спутников: ${parsed.length}`)
   }
 
@@ -619,6 +806,51 @@ export default function App() {
     })
   }
 
+  const startRealtime = () => {
+    setSimulationMode('realtime')
+    setIsPlaying(true)
+    const now = new Date()
+    setSimulationAnchorTime(now)
+    setSimulatedTime(now)
+  }
+
+  const startSimulation = () => {
+    const now = new Date()
+    setSimulationMode('sim')
+    setSimulationAnchorTime(now)
+    setSimulatedTime(now)
+  }
+
+  const shiftTimeline = (deltaMinutes) => {
+    const baseTime = simulationMode === 'realtime' ? new Date() : simulatedTime
+
+    if (simulationMode === 'realtime') {
+      setSimulationAnchorTime(baseTime)
+    }
+
+    setSimulationMode('sim')
+    setIsPlaying(false)
+    setSimulatedTime(new Date(baseTime.getTime() + deltaMinutes * 60000))
+  }
+
+  const handleTimelineChange = (event) => {
+    const minutes = Number(event.target.value)
+    setSimulationMode('sim')
+    setIsPlaying(false)
+    setSimulatedTime(new Date(simulationAnchorTime.getTime() + minutes * 60000))
+  }
+
+  const handleObserverCoordinateChange = (field, value, limits) => {
+    if (Number.isNaN(value)) return
+
+    const nextValue = Math.max(limits.min, Math.min(limits.max, value))
+    setObserver((previous) => ({
+      ...previous,
+      [field]: nextValue,
+      label: 'Пользовательская точка',
+    }))
+  }
+
   return (
     <div className="app-shell container-fluid px-3 px-lg-4 py-4">
       <header className="topbar d-flex flex-column flex-xxl-row align-items-start justify-content-between gap-3 gap-lg-4 mb-4">
@@ -626,8 +858,8 @@ export default function App() {
           <p className="eyebrow">Satellite situational awareness</p>
           <h1>Карта и 3D-пространство спутников по TLE</h1>
           <p className="panel-copy">
-            Показывает текущие положения, анимацию движения, фильтрацию и прогноз следующего пролёта
-            над выбранной точкой.
+            Показывает текущие положения, анимацию движения, фильтрацию, сравнение групп и
+            список ближайших пролётов над выбранной точкой.
           </p>
         </div>
 
@@ -669,40 +901,27 @@ export default function App() {
               <button
                 type="button"
                 className={simulationMode === 'realtime' ? 'is-active' : ''}
-                onClick={() => {
-                  setSimulationMode('realtime')
-                  setIsPlaying(true)
-                  setSimulatedTime(new Date())
-                }}
+                onClick={startRealtime}
               >
                 Реальное время
               </button>
               <button
                 type="button"
                 className={simulationMode === 'sim' ? 'is-active' : ''}
-                onClick={() => {
-                  setSimulationMode('sim')
-                  setSimulatedTime(new Date())
-                }}
+                onClick={startSimulation}
               >
                 Симуляция
               </button>
             </div>
 
-            <div className="button-row">
+            <div className="button-row button-row--triple">
               <button type="button" onClick={() => setIsPlaying((value) => !value)}>
                 {isPlaying ? 'Пауза' : 'Пуск'}
               </button>
-              <button
-                type="button"
-                onClick={() => setSimulatedTime((value) => new Date(value.getTime() - 10 * 60000))}
-              >
+              <button type="button" onClick={() => shiftTimeline(-10)}>
                 −10 мин
               </button>
-              <button
-                type="button"
-                onClick={() => setSimulatedTime((value) => new Date(value.getTime() + 10 * 60000))}
-              >
+              <button type="button" onClick={() => shiftTimeline(10)}>
                 +10 мин
               </button>
             </div>
@@ -720,6 +939,28 @@ export default function App() {
                 ))}
               </select>
             </label>
+
+            <div className="timeline-card">
+              <div className="timeline-card__header">
+                <strong>Таймлайн ±12 часов</strong>
+                <button type="button" onClick={() => setSimulationAnchorTime(simulatedTime)}>
+                  Центрировать
+                </button>
+              </div>
+              <input
+                type="range"
+                min={-SIMULATION_WINDOW_MINUTES}
+                max={SIMULATION_WINDOW_MINUTES}
+                step={10}
+                value={timelineValue}
+                onChange={handleTimelineChange}
+              />
+              <div className="timeline-card__labels">
+                <span>{formatDateTime(new Date(simulationAnchorTime.getTime() - SIMULATION_WINDOW_MINUTES * 60000))}</span>
+                <span>Текущее смещение: {timelineValue >= 0 ? '+' : ''}{timelineValue} мин</span>
+                <span>{formatDateTime(new Date(simulationAnchorTime.getTime() + SIMULATION_WINDOW_MINUTES * 60000))}</span>
+              </div>
+            </div>
           </div>
 
           <div className="panel-block">
@@ -789,7 +1030,7 @@ export default function App() {
               {showCoverage ? 'Скрыть зону покрытия' : 'Показать зону покрытия'}
             </button>
             <p className="helper-text">
-              Зона покрытия отображается для выбранного спутника на 2D-карте и на 3D-глобусе.
+              {renderMode.status}. Подписи и орбитальные следы автоматически упрощаются при росте числа объектов.
             </p>
           </div>
         </section>
@@ -859,24 +1100,17 @@ export default function App() {
                   title={`${satellite.name} • зона покрытия ≈ ${formatNumber(satellite.visibilityRadiusKm, 0)} км`}
                 >
                   <span className="map-satellite__dot" />
-                  <em className="map-satellite__label">{satellite.name}</em>
+                  {renderMode.showMapLabels ? <em className="map-satellite__label">{satellite.name}</em> : null}
                 </button>
               ))}
 
-              <div
-                className="observer-point"
-                style={projectMapPosition(observer.lat, observer.lng)}
-              >
+              <div className="observer-point" style={projectMapPosition(observer.lat, observer.lng)}>
                 <span />
                 <strong>{observer.label}</strong>
               </div>
 
               {WORLD_MAP_MARKERS.map((marker) => (
-                <div
-                  key={marker.name}
-                  className="map-city"
-                  style={projectMapPosition(marker.lat, marker.lng)}
-                >
+                <div key={marker.name} className="map-city" style={projectMapPosition(marker.lat, marker.lng)}>
                   <span />
                   <small>{marker.name}</small>
                 </div>
@@ -896,7 +1130,15 @@ export default function App() {
             ref={globeContainerRef}
             className={`globe-canvas ${globeViewport.isPortrait ? 'is-portrait' : ''}`}
             style={{ minHeight: globeViewport.height || undefined }}
-          />
+          >
+            {globeStatus !== 'ready' ? (
+              <div className="globe-canvas__status">
+                {globeStatus === 'error'
+                  ? 'Не удалось загрузить 3D-глобус.'
+                  : 'Загрузка 3D-глобуса…'}
+              </div>
+            ) : null}
+          </div>
 
           {selectedSatellite && selectedSatelliteSpaceDiagram ? (
             <article className="space-focus-card">
@@ -1022,6 +1264,12 @@ export default function App() {
                 </div>
               </div>
 
+              {selectedPassAlert ? (
+                <div className="notice-card">
+                  Ближайший пролёт над точкой наблюдения — {formatDurationFromNow(selectedPassAlert.time, simulatedTime)}.
+                </div>
+              ) : null}
+
               <dl className="detail-grid">
                 <div>
                   <dt>Орбита</dt>
@@ -1066,7 +1314,15 @@ export default function App() {
                   <dd>
                     {selectedSatellite.nextPass?.time
                       ? formatDateTime(selectedSatellite.nextPass.time)
-                      : 'Не найден в ближайшие 48 часов'}
+                      : `Не найден в ближайшие ${PASS_LOOKAHEAD_HOURS} часов`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Минимальная дистанция</dt>
+                  <dd>
+                    {selectedSatellite.nextPass?.distanceKm
+                      ? `${formatNumber(selectedSatellite.nextPass.distanceKm, 0)} км`
+                      : '—'}
                   </dd>
                 </div>
               </dl>
@@ -1083,7 +1339,10 @@ export default function App() {
                       max={90}
                       step="0.1"
                       onChange={(event) =>
-                        setObserver((prev) => ({ ...prev, lat: Number(event.target.value), label: 'Пользовательская точка' }))
+                        handleObserverCoordinateChange('lat', Number(event.target.value), {
+                          min: -90,
+                          max: 90,
+                        })
                       }
                     />
                   </label>
@@ -1096,11 +1355,44 @@ export default function App() {
                       max={180}
                       step="0.1"
                       onChange={(event) =>
-                        setObserver((prev) => ({ ...prev, lng: Number(event.target.value), label: 'Пользовательская точка' }))
+                        handleObserverCoordinateChange('lng', Number(event.target.value), {
+                          min: -180,
+                          max: 180,
+                        })
                       }
                     />
                   </label>
                 </div>
+              </div>
+
+              <div className="subpanel-card">
+                <div className="subpanel-card__header">
+                  <h4>Ближайшие пролёты над выбранной точкой</h4>
+                  <span>{passStatus === 'loading' ? 'Пересчитываем…' : `${observerUpcomingPasses.length} найдено`}</span>
+                </div>
+                {observerUpcomingPasses.length > 0 ? (
+                  <div className="pass-list">
+                    {observerUpcomingPasses.map((item) => (
+                      <button
+                        key={`${item.id}-pass`}
+                        type="button"
+                        className="pass-list__item"
+                        onClick={() => setSelectedSatelliteId(item.id)}
+                      >
+                        <span className="pass-list__swatch" style={{ backgroundColor: item.color }} />
+                        <div>
+                          <strong>{item.name}</strong>
+                          <small>
+                            {formatDateTime(item.nextPass.time)} • {formatDurationFromNow(item.nextPass.time, simulatedTime)}
+                          </small>
+                        </div>
+                        <span>{formatNumber(item.nextPass.distanceKm, 0)} км</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="helper-text">Над текущей точкой наблюдения нет пролётов в расчётном окне.</p>
+                )}
               </div>
 
               <details>
@@ -1117,6 +1409,28 @@ export default function App() {
           <div className="panel-heading">
             <h2>Список спутников</h2>
             <p>{filteredTelemetry.length} объектов после применения фильтров и группировки.</p>
+          </div>
+
+          <div className="subpanel-card">
+            <div className="subpanel-card__header">
+              <h4>Сравнение группировок</h4>
+              <span>{formatGroupMode(comparisonMode)}</span>
+            </div>
+            {comparisonRows.length > 0 ? (
+              <div className="comparison-grid">
+                {comparisonRows.map((row) => (
+                  <article key={row.title} className="comparison-card">
+                    <strong>{row.title}</strong>
+                    <span>{row.count} спутн.</span>
+                    <small>Средняя высота: {formatNumber(row.averageAltitudeKm, 0)} км</small>
+                    <small>Средняя скорость: {formatNumber(row.averageSpeedKmS, 2)} км/с</small>
+                    <small>Макс. покрытие: {formatNumber(row.maxCoverageKm, 0)} км</small>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="helper-text">Недостаточно данных для сравнения.</p>
+            )}
           </div>
 
           <div className="satellite-list pe-1">
@@ -1156,6 +1470,14 @@ export default function App() {
                       <div>
                         <dt>Покрытие</dt>
                         <dd>{formatNumber(satellite.visibilityRadiusKm, 0)} км</dd>
+                      </div>
+                      <div>
+                        <dt>Пролёт</dt>
+                        <dd>
+                          {satellite.nextPass?.time
+                            ? formatDurationFromNow(satellite.nextPass.time, simulatedTime)
+                            : 'нет окна'}
+                        </dd>
                       </div>
                     </dl>
                   </article>
