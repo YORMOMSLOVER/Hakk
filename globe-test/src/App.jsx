@@ -1211,14 +1211,22 @@ export default function App() {
               </select>
             </label>
 
-            <label>
-              Загрузить TLE-файл
+            <div className="field-group">
+              <span className="field-group__label">Загрузить TLE-файл</span>
               <span className="file-picker">
-                <span className="file-picker__button">Выбрать TLE-файл</span>
+                <label className="file-picker__button" htmlFor="tle-file-input">
+                  Выбрать TLE-файл
+                </label>
                 <span className="file-picker__filename">{selectedTleFileName}</span>
-                <input type="file" accept=".txt,.tle,.3le" onChange={handleFileUpload} />
+                <input
+                  id="tle-file-input"
+                  className="file-picker__input"
+                  type="file"
+                  accept=".txt,.tle,.3le"
+                  onChange={handleFileUpload}
+                />
               </span>
-            </label>
+            </div>
 
             {uploadStatus ? <p className="helper-text">{uploadStatus}</p> : null}
             {sourceType === 'preset' && remoteLoadStatus ? <p className="helper-text">{remoteLoadStatus}</p> : null}
