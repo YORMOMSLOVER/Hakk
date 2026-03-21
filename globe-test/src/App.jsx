@@ -1281,7 +1281,7 @@ export default function App() {
           </div>
         </section>
 
-        <div className="dashboard-main-column">
+        <div className="dashboard-main-column w-100">
           <section className="visual-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Положения спутников на карте</h2>
@@ -1533,7 +1533,7 @@ export default function App() {
           </section>
         </div>
 
-        <div className="dashboard-side-column">
+        <div className="dashboard-side-column w-100">
           <section className="details-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Карточка спутника</h2>
