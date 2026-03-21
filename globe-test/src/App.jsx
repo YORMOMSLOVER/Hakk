@@ -482,6 +482,7 @@ export default function App() {
     if (!target) return
 
     dragStateRef.current = {
+      pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
       offsetX: mapTransform.offsetX,
@@ -489,28 +490,35 @@ export default function App() {
       moved: false,
     }
 
-    target.setPointerCapture(event.pointerId)
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) return
+    event.currentTarget.setPointerCapture?.(event.pointerId)
   }
 
   const handleMapPointerMove = (event) => {
-    if (!dragStateRef.current) return
+    const dragState = dragStateRef.current
+    if (!dragState || dragState.pointerId !== event.pointerId) return
 
-    const deltaX = event.clientX - dragStateRef.current.x
-    const deltaY = event.clientY - dragStateRef.current.y
+    const deltaX = event.clientX - dragState.x
+    const deltaY = event.clientY - dragState.y
 
     if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
-      dragStateRef.current.moved = true
+      dragState.moved = true
       skipMapClickRef.current = true
     }
 
     setMapTransform((previous) => ({
       ...previous,
-      offsetX: dragStateRef.current.offsetX + deltaX,
-      offsetY: dragStateRef.current.offsetY + deltaY,
+      offsetX: dragState.offsetX + deltaX,
+      offsetY: dragState.offsetY + deltaY,
     }))
   }
 
-  const handleMapPointerUp = () => {
+  const handleMapPointerUp = (event) => {
+    const activePointerId = dragStateRef.current?.pointerId
+    if (typeof activePointerId === 'number' && event?.currentTarget?.hasPointerCapture?.(activePointerId)) {
+      event.currentTarget.releasePointerCapture?.(activePointerId)
+    }
+
     window.setTimeout(() => {
       skipMapClickRef.current = false
     }, 0)
@@ -718,7 +726,8 @@ export default function App() {
             onPointerDown={handleMapPointerDown}
             onPointerMove={handleMapPointerMove}
             onPointerUp={handleMapPointerUp}
-            onPointerLeave={handleMapPointerUp}
+            onPointerCancel={handleMapPointerUp}
+            onLostPointerCapture={handleMapPointerUp}
             onClick={handleMapClick}
           >
             <div
