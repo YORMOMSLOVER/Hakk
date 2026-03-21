@@ -23,6 +23,10 @@ const WORLD_MAP_MARKERS = [
   { name: 'Канаверал', lat: 28.39, lng: -80.6 },
   { name: 'Тулуза', lat: 43.6, lng: 1.44 },
 ]
+const MAP_STYLE_OPTIONS = [
+  { id: 'terrain', label: 'Схема' },
+  { id: 'satellite', label: 'Спутник' },
+]
 
 function formatNumber(value, digits = 0) {
   return new Intl.NumberFormat('ru-RU', {
@@ -213,8 +217,10 @@ export default function App() {
   const [selectedOperator, setSelectedOperator] = useState('Все')
   const [selectedMission, setSelectedMission] = useState('Все')
   const [groupBy, setGroupBy] = useState('none')
-  const [mapTransform, setMapTransform] = useState({ scale: 1.12, offsetX: 0, offsetY: 0 })
+  const [mapTransform, setMapTransform] = useState({ scale: 1, offsetX: 0, offsetY: 0 })
+  const [mapStyle, setMapStyle] = useState('satellite')
   const [observer, setObserver] = useState({ lat: 55.75, lng: 37.62, label: 'Москва' })
+  const [observerInputs, setObserverInputs] = useState({ lat: '55.75', lng: '37.62' })
   const [uploadStatus, setUploadStatus] = useState('')
   const [showCoverage, setShowCoverage] = useState(true)
   const [globeViewport, setGlobeViewport] = useState({ width: 0, height: 0, isPortrait: false })
@@ -618,6 +624,14 @@ export default function App() {
       .sort((left, right) => right.count - left.count)
   }, [comparisonMode, filteredTelemetry])
 
+
+  useEffect(() => {
+    setObserverInputs({
+      lat: Number.isFinite(observer.lat) ? String(Number(observer.lat.toFixed(2))) : '',
+      lng: Number.isFinite(observer.lng) ? String(Number(observer.lng.toFixed(2))) : '',
+    })
+  }, [observer.lat, observer.lng])
+
   const timelineValue = useMemo(() => {
     const diffMinutes = Math.round((simulatedTime.getTime() - simulationAnchorTime.getTime()) / 60000)
     return Math.max(-SIMULATION_WINDOW_MINUTES, Math.min(SIMULATION_WINDOW_MINUTES, diffMinutes))
@@ -732,12 +746,31 @@ export default function App() {
     event.preventDefault()
     event.stopPropagation()
 
+    const viewport = mapViewportRef.current
+
     setMapTransform((previous) => {
-      const nextScale = Math.max(1, Math.min(3.4, previous.scale - event.deltaY * 0.0012))
+      const nextScale = Math.max(1, Math.min(4, previous.scale - event.deltaY * 0.0012))
+
+      if (!viewport || nextScale === previous.scale) {
+        return clampTransform({
+          scale: nextScale,
+          offsetX: previous.offsetX,
+          offsetY: previous.offsetY,
+        })
+      }
+
+      const rect = viewport.getBoundingClientRect()
+      const originX = rect.width / 2
+      const originY = rect.height / 2
+      const cursorX = event.clientX - rect.left
+      const cursorY = event.clientY - rect.top
+      const contentX = (cursorX - previous.offsetX - originX) / previous.scale
+      const contentY = (cursorY - previous.offsetY - originY) / previous.scale
+
       return clampTransform({
         scale: nextScale,
-        offsetX: previous.offsetX,
-        offsetY: previous.offsetY,
+        offsetX: cursorX - originX - contentX * nextScale,
+        offsetY: cursorY - originY - contentY * nextScale,
       })
     })
   }
@@ -842,14 +875,50 @@ export default function App() {
     setSimulatedTime(new Date(simulationAnchorTime.getTime() + minutes * 60000))
   }
 
-  const handleObserverCoordinateChange = (field, value, limits) => {
-    if (Number.isNaN(value)) return
+  const handleMapZoomStep = (delta) => {
+    setMapTransform((previous) =>
+      clampTransform({
+        scale: Math.max(1, Math.min(4, previous.scale + delta)),
+        offsetX: previous.offsetX,
+        offsetY: previous.offsetY,
+      }),
+    )
+  }
 
-    const nextValue = Math.max(limits.min, Math.min(limits.max, value))
+  const handleObserverInputChange = (field, rawValue, limits) => {
+    setObserverInputs((previous) => ({
+      ...previous,
+      [field]: rawValue,
+    }))
+
+    if (rawValue.trim() === '' || rawValue === '-' || rawValue === '.' || rawValue === '-.') return
+
+    const numericValue = Number(rawValue)
+    if (Number.isNaN(numericValue)) return
+
+    const nextValue = Math.max(limits.min, Math.min(limits.max, numericValue))
     setObserver((previous) => ({
       ...previous,
       [field]: nextValue,
       label: 'Пользовательская точка',
+    }))
+  }
+
+  const handleObserverInputBlur = (field, limits) => {
+    const rawValue = observerInputs[field]
+    const numericValue = Number(rawValue)
+    const safeValue = Number.isNaN(numericValue)
+      ? observer[field]
+      : Math.max(limits.min, Math.min(limits.max, numericValue))
+
+    setObserver((current) => ({
+      ...current,
+      [field]: safeValue,
+      label: 'Пользовательская точка',
+    }))
+    setObserverInputs((previous) => ({
+      ...previous,
+      [field]: String(Number(safeValue.toFixed(2))),
     }))
   }
 
@@ -1040,12 +1109,38 @@ export default function App() {
         <section className="visual-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Положения спутников на карте</h2>
-            <p>Колесо мыши — масштаб, перетаскивание — перемещение, клик — выбрать точку наблюдения.</p>
+            <p>Колесо мыши или кнопки — масштаб, перетаскивание — перемещение, клик — выбрать точку наблюдения.</p>
+          </div>
+
+          <div className="map-toolbar">
+            <div className="button-row">
+              {MAP_STYLE_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={mapStyle === option.id ? 'is-active' : ''}
+                  onClick={() => setMapStyle(option.id)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="map-toolbar__actions">
+              <button type="button" onClick={() => handleMapZoomStep(0.2)} aria-label="Приблизить карту">+</button>
+              <button type="button" onClick={() => handleMapZoomStep(-0.2)} aria-label="Отдалить карту">−</button>
+              <button
+                type="button"
+                onClick={() => setMapTransform({ scale: 1, offsetX: 0, offsetY: 0 })}
+              >
+                Сбросить вид
+              </button>
+            </div>
           </div>
 
           <div
             ref={mapViewportRef}
-            className="map-viewport"
+            className={`map-viewport map-viewport--${mapStyle}`}
             onWheel={handleMapWheel}
             onPointerDown={handleMapPointerDown}
             onPointerMove={handleMapPointerMove}
@@ -1337,12 +1432,18 @@ export default function App() {
                     Широта
                     <input
                       type="number"
-                      value={observer.lat}
+                      value={observerInputs.lat}
                       min={-90}
                       max={90}
                       step="0.1"
                       onChange={(event) =>
-                        handleObserverCoordinateChange('lat', Number(event.target.value), {
+                        handleObserverInputChange('lat', event.target.value, {
+                          min: -90,
+                          max: 90,
+                        })
+                      }
+                      onBlur={() =>
+                        handleObserverInputBlur('lat', {
                           min: -90,
                           max: 90,
                         })
@@ -1353,12 +1454,18 @@ export default function App() {
                     Долгота
                     <input
                       type="number"
-                      value={observer.lng}
+                      value={observerInputs.lng}
                       min={-180}
                       max={180}
                       step="0.1"
                       onChange={(event) =>
-                        handleObserverCoordinateChange('lng', Number(event.target.value), {
+                        handleObserverInputChange('lng', event.target.value, {
+                          min: -180,
+                          max: 180,
+                        })
+                      }
+                      onBlur={() =>
+                        handleObserverInputBlur('lng', {
                           min: -180,
                           max: 180,
                         })

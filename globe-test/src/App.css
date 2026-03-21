@@ -209,6 +209,27 @@ input {
   gap: 6px;
 }
 
+.map-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.map-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.map-toolbar__actions button:first-child,
+.map-toolbar__actions button:nth-child(2) {
+  min-width: 44px;
+  padding-inline: 0;
+}
+
 .map-viewport {
   position: relative;
   overflow: hidden;
@@ -221,6 +242,7 @@ input {
   overscroll-behavior: contain;
   user-select: none;
   cursor: grab;
+  isolation: isolate;
 }
 
 .map-viewport:active {
@@ -246,6 +268,20 @@ input {
     radial-gradient(circle at 20% 20%, rgba(0, 187, 249, 0.16), transparent 24%),
     radial-gradient(circle at 85% 65%, rgba(123, 140, 255, 0.14), transparent 28%),
     linear-gradient(180deg, rgba(7, 31, 67, 0.96), rgba(4, 14, 38, 0.98));
+}
+
+.map-viewport--satellite .map-ocean {
+  background:
+    linear-gradient(180deg, rgba(3, 10, 24, 0.16), rgba(3, 10, 24, 0.28)),
+    url('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg') center / cover no-repeat;
+}
+
+.map-viewport--satellite .map-continents {
+  opacity: 0;
+}
+
+.map-viewport--satellite .map-grid__line {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .map-grid__line {
@@ -294,6 +330,9 @@ input {
 }
 
 .map-satellite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 18px;
   height: 18px;
   border: none;
@@ -305,6 +344,8 @@ input {
 .map-satellite__dot,
 .observer-point span,
 .map-city span {
+  display: block;
+  flex: 0 0 auto;
   width: 12px;
   height: 12px;
   border-radius: 999px;
@@ -325,6 +366,9 @@ input {
   font-size: 0.72rem;
   white-space: nowrap;
   text-shadow: 0 3px 12px rgba(0, 0, 0, 0.7);
+  max-width: min(16vw, 140px);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .map-satellite__label {
@@ -337,10 +381,15 @@ input {
 
 .observer-point {
   z-index: 4;
+  pointer-events: none;
 }
 
 .observer-point span {
   background: #ffd166;
+}
+
+.map-city {
+  pointer-events: none;
 }
 
 .map-city span {
