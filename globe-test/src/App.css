@@ -218,6 +218,8 @@ input {
   background: linear-gradient(180deg, rgba(17, 42, 84, 0.95), rgba(5, 12, 32, 0.95));
   border: 1px solid rgba(255, 255, 255, 0.08);
   touch-action: none;
+  overscroll-behavior: contain;
+  user-select: none;
   cursor: grab;
 }
 
