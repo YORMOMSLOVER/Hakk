@@ -119,17 +119,6 @@ function convertEventToLatLng(event, container, transform) {
   }
 }
 
-function wrapLongitudeNear(lng, referenceLng = 0) {
-  const normalizedLongitude = normalizeLongitude(lng)
-  const normalizedReference = normalizeLongitude(referenceLng)
-  let delta = normalizedLongitude - normalizedReference
-
-  if (delta > 180) delta -= 360
-  if (delta < -180) delta += 360
-
-  return normalizedReference + delta
-}
-
 function projectMapPosition(lat, lng) {
   return {
     left: `${((normalizeLongitude(lng) + 180) / 360) * 100}%`,
@@ -164,26 +153,22 @@ function buildWorldGrid() {
   return { verticalLines, horizontalLines }
 }
 
-function latLngToMapPoint(lat, lng, referenceLng = 0) {
-  const wrappedLongitude = wrapLongitudeNear(lng, referenceLng)
+function mapCoverageEllipses(position, visibilityRadiusKm) {
+  const angularDistance = Math.max(0, Math.min(Math.PI, visibilityRadiusKm / EARTH_RADIUS_KM))
+  const latitudeRadiusDegrees = (angularDistance * 180) / Math.PI
+  const safeLatitudeCosine = Math.max(0.18, Math.cos((clampLatitude(position.lat) * Math.PI) / 180))
+  const longitudeRadiusDegrees = Math.min(180, latitudeRadiusDegrees / safeLatitudeCosine)
+  const centerXPercent = ((normalizeLongitude(position.lng) + 180) / 360) * 100
+  const centerYPercent = ((90 - clampLatitude(position.lat)) / 180) * 100
+  const widthPercent = (longitudeRadiusDegrees / 180) * 100
+  const heightPercent = (latitudeRadiusDegrees / 90) * 100
 
-  return {
-    x: ((wrappedLongitude + 180) / 360) * 1000,
-    y: ((90 - clampLatitude(lat)) / 180) * 500,
-  }
-}
-
-function coveragePolygonPaths(path, referenceLng) {
-  if (!path.length) return []
-
-  const wrappedPoints = path.map((point) => latLngToMapPoint(point.lat, point.lng, referenceLng))
-
-  return [-1000, 0, 1000].map((shift) =>
-    [
-      ...wrappedPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x + shift} ${point.y}`),
-      'Z',
-    ].join(' '),
-  )
+  return [-100, 0, 100].map((shift) => ({
+    left: `${centerXPercent + shift}%`,
+    top: `${centerYPercent}%`,
+    width: `${widthPercent}%`,
+    height: `${heightPercent}%`,
+  }))
 }
 
 function mapCoverageEllipses(position, visibilityRadiusKm) {
