@@ -298,6 +298,9 @@ export function estimateNextPass(satellite, observer, startDate, maxHoursAhead =
 
 export const DEFAULT_COLORS = ['#ff6b6b', '#4ecdc4', '#ffd166', '#7b8cff', '#9b5de5', '#00bbf9']
 
+const ACTIVE_PAYLOAD_LIMIT = 200
+const CULLABLE_NAME_PATTERNS = [/\bDEB\b/i, /\bR\/B\b/i, /\bOBJECT\b/i, /\bAKM\b/i]
+
 const BASE_TLE_SETS = [
   {
     id: 'featured',
@@ -432,6 +435,49 @@ function buildStressTestSet(baseSets, totalSatellites = 120) {
   }
 }
 
-export const DEFAULT_TLE_SETS = [...BASE_TLE_SETS, buildStressTestSet(BASE_TLE_SETS)]
+export const REMOTE_TLE_SETS = [
+  {
+    id: 'active-200',
+    name: '200 активных спутников (CelesTrak, live)',
+    sourceUrl: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle',
+    limit: ACTIVE_PAYLOAD_LIMIT,
+    country: 'Международная',
+    operator: 'CelesTrak / актуальный каталог',
+    mission: 'Активные спутники',
+    description: `Автоматическая загрузка первых ${ACTIVE_PAYLOAD_LIMIT} активных спутников из официальной группы Active Satellites без debris/objects.`,
+  },
+]
+
+export async function loadRemoteTleSet(remoteSet) {
+  if (!remoteSet?.sourceUrl) {
+    throw new Error('Для удалённого набора не указан sourceUrl.')
+  }
+
+  const response = await fetch(remoteSet.sourceUrl)
+
+  if (!response.ok) {
+    throw new Error(`Не удалось загрузить TLE: HTTP ${response.status}`)
+  }
+
+  const rawText = await response.text()
+  const parsed = parseTleText(rawText, remoteSet.name)
+    .filter((satellite) => !CULLABLE_NAME_PATTERNS.some((pattern) => pattern.test(satellite.name)))
+    .slice(0, remoteSet.limit ?? ACTIVE_PAYLOAD_LIMIT)
+    .map((satellite, index) => ({
+      ...satellite,
+      id: `${remoteSet.id}-${index + 1}`,
+      country: remoteSet.country,
+      operator: remoteSet.operator,
+      mission: remoteSet.mission,
+    }))
+
+  if (parsed.length === 0) {
+    throw new Error('Удалённый источник не вернул подходящих активных спутников.')
+  }
+
+  return parsed
+}
+
+export const DEFAULT_TLE_SETS = [...BASE_TLE_SETS, ...REMOTE_TLE_SETS, buildStressTestSet(BASE_TLE_SETS)]
 
 export const DEFAULT_TLES = DEFAULT_TLE_SETS[0].satellites

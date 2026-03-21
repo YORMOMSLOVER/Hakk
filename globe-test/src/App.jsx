@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import {
   DEFAULT_TLE_SETS,
+  REMOTE_TLE_SETS,
   estimateNextPass,
   footprintPath,
+  loadRemoteTleSet,
   orbitPath,
   parseTle,
   parseTleText,
@@ -257,6 +259,8 @@ export default function App() {
   const [sourceType, setSourceType] = useState('preset')
   const [activeSetId, setActiveSetId] = useState(DEFAULT_TLE_SETS[0].id)
   const [customSatellites, setCustomSatellites] = useState([])
+  const [remoteSatellitesBySetId, setRemoteSatellitesBySetId] = useState({})
+  const [remoteLoadStatus, setRemoteLoadStatus] = useState('')
   const [simulationMode, setSimulationMode] = useState('realtime')
   const [isPlaying, setIsPlaying] = useState(true)
   const [simulationSpeed, setSimulationSpeed] = useState(60)
@@ -284,6 +288,11 @@ export default function App() {
   const [isSatelliteListExpanded, setIsSatelliteListExpanded] = useState(false)
 
   const worldGrid = useMemo(() => buildWorldGrid(), [])
+  const activePreset = useMemo(
+    () => DEFAULT_TLE_SETS.find((item) => item.id === activeSetId) ?? DEFAULT_TLE_SETS[0],
+    [activeSetId],
+  )
+  const isRemotePreset = REMOTE_TLE_SETS.some((item) => item.id === activePreset.id)
 
   const clampTransform = (transform) => {
     const viewport = mapViewportRef.current
@@ -292,13 +301,56 @@ export default function App() {
 
   const activeRawSatellites = useMemo(() => {
     if (sourceType === 'file' && customSatellites.length > 0) return customSatellites
-    return DEFAULT_TLE_SETS.find((item) => item.id === activeSetId)?.satellites ?? DEFAULT_TLE_SETS[0].satellites
-  }, [activeSetId, customSatellites, sourceType])
+    if (isRemotePreset) return remoteSatellitesBySetId[activePreset.id] ?? []
+    return activePreset?.satellites ?? DEFAULT_TLE_SETS[0].satellites
+  }, [activePreset, customSatellites, isRemotePreset, remoteSatellitesBySetId, sourceType])
 
   const satellites = useMemo(
     () => activeRawSatellites.map((satellite, index) => parseTle(satellite, index)),
     [activeRawSatellites],
   )
+
+  useEffect(() => {
+    if (sourceType !== 'preset') {
+      setRemoteLoadStatus('')
+      return undefined
+    }
+
+    if (!isRemotePreset) {
+      setRemoteLoadStatus('')
+      return undefined
+    }
+
+    if (remoteSatellitesBySetId[activePreset.id]?.length) {
+      setRemoteLoadStatus(
+        `Загружено ${remoteSatellitesBySetId[activePreset.id].length} активных спутников из live-каталога CelesTrak.`,
+      )
+      return undefined
+    }
+
+    let cancelled = false
+
+    setRemoteLoadStatus(`Загружаем live-набор "${activePreset.name}"…`)
+
+    loadRemoteTleSet(activePreset)
+      .then((satellitesList) => {
+        if (cancelled) return
+
+        setRemoteSatellitesBySetId((previous) => ({
+          ...previous,
+          [activePreset.id]: satellitesList,
+        }))
+        setRemoteLoadStatus(`Загружено ${satellitesList.length} активных спутников из live-каталога CelesTrak.`)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setRemoteLoadStatus(error instanceof Error ? error.message : 'Не удалось загрузить live-набор TLE.')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activePreset, isRemotePreset, remoteSatellitesBySetId, sourceType])
 
 
   useEffect(() => {
@@ -1116,6 +1168,7 @@ export default function App() {
             </label>
 
             {uploadStatus ? <p className="helper-text">{uploadStatus}</p> : null}
+            {sourceType === 'preset' && remoteLoadStatus ? <p className="helper-text">{remoteLoadStatus}</p> : null}
             <p className="helper-text">
               Активный источник: {sourceType === 'file' ? 'пользовательский файл' : 'преднастроенный набор'}.
             </p>
