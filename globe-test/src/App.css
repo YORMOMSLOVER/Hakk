@@ -333,12 +333,20 @@ input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 28px;
+  height: 28px;
   border: none;
   background: transparent;
   padding: 0;
   z-index: 3;
+  cursor: pointer;
+  transition: none;
+}
+
+.map-satellite:hover,
+.map-satellite:focus-visible,
+.map-satellite:active {
+  transform: translate(-50%, -50%);
 }
 
 .map-satellite__dot,

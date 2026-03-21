@@ -72,11 +72,14 @@ function groupLabel(telemetry, mode) {
 function clampMapTransform(transform, viewport) {
   if (!viewport) return transform
 
-  const maxOffsetX = Math.max(0, ((transform.scale - 1) * viewport.width) / 2)
-  const maxOffsetY = Math.max(0, ((transform.scale - 1) * viewport.height) / 2)
+  const width = viewport.clientWidth || viewport.getBoundingClientRect().width || 0
+  const height = viewport.clientHeight || viewport.getBoundingClientRect().height || 0
+  const scale = Math.max(1, Math.min(4, transform.scale))
+  const maxOffsetX = Math.max(0, ((scale - 1) * width) / 2)
+  const maxOffsetY = Math.max(0, ((scale - 1) * height) / 2)
 
   return {
-    scale: transform.scale,
+    scale,
     offsetX: Math.min(maxOffsetX, Math.max(-maxOffsetX, transform.offsetX)),
     offsetY: Math.min(maxOffsetY, Math.max(-maxOffsetY, transform.offsetY)),
   }
@@ -1186,9 +1189,6 @@ export default function App() {
                   style={{
                     ...projectMapPosition(satellite.lat, satellite.lng),
                     '--satellite-color': satellite.color,
-                  }}
-                  onPointerDown={(event) => {
-                    event.stopPropagation()
                   }}
                   onClick={(event) => {
                     event.stopPropagation()
