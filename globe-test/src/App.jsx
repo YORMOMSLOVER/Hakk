@@ -267,6 +267,7 @@ export default function App() {
   const [selectedCountry, setSelectedCountry] = useState('Все')
   const [selectedOperator, setSelectedOperator] = useState('Все')
   const [selectedMission, setSelectedMission] = useState('Все')
+  const [altitudeFilter, setAltitudeFilter] = useState({ min: '', max: '' })
   const [groupBy, setGroupBy] = useState('none')
   const [satelliteListSearchQuery, setSatelliteListSearchQuery] = useState('')
   const [mapTransform, setMapTransform] = useState({ scale: 1, offsetX: 0, offsetY: 0 })
@@ -568,6 +569,16 @@ export default function App() {
       ? selectedSatelliteId
       : telemetryWithPasses[0]?.id ?? null
 
+  const normalizedAltitudeFilter = useMemo(() => {
+    const min = altitudeFilter.min.trim() === '' ? null : Number(altitudeFilter.min)
+    const max = altitudeFilter.max.trim() === '' ? null : Number(altitudeFilter.max)
+
+    return {
+      min: Number.isFinite(min) ? min : null,
+      max: Number.isFinite(max) ? max : null,
+    }
+  }, [altitudeFilter])
+
   const filteredTelemetry = useMemo(
     () =>
       telemetryWithPasses.filter((item) => {
@@ -575,9 +586,19 @@ export default function App() {
         if (selectedCountry !== 'Все' && item.country !== selectedCountry) return false
         if (selectedOperator !== 'Все' && item.operator !== selectedOperator) return false
         if (selectedMission !== 'Все' && item.mission !== selectedMission) return false
+        if (normalizedAltitudeFilter.min !== null && item.altitudeKm < normalizedAltitudeFilter.min) return false
+        if (normalizedAltitudeFilter.max !== null && item.altitudeKm > normalizedAltitudeFilter.max) return false
         return true
       }),
-    [telemetryWithPasses, selectedCountry, selectedMission, selectedOperator, selectedOrbitFilter],
+    [
+      normalizedAltitudeFilter.max,
+      normalizedAltitudeFilter.min,
+      telemetryWithPasses,
+      selectedCountry,
+      selectedMission,
+      selectedOperator,
+      selectedOrbitFilter,
+    ],
   )
 
   const searchedTelemetry = useMemo(() => {
@@ -685,11 +706,22 @@ export default function App() {
           if (selectedCountry !== 'Все' && item.country !== selectedCountry) return false
           if (selectedOperator !== 'Все' && item.operator !== selectedOperator) return false
           if (selectedMission !== 'Все' && item.mission !== selectedMission) return false
+          if (normalizedAltitudeFilter.min !== null && item.altitudeKm < normalizedAltitudeFilter.min) return false
+          if (normalizedAltitudeFilter.max !== null && item.altitudeKm > normalizedAltitudeFilter.max) return false
           return true
         })
         .sort((left, right) => left.nextPass.time.getTime() - right.nextPass.time.getTime())
         .slice(0, PASS_LIST_LIMIT),
-    [passPredictions, selectedCountry, selectedMission, selectedOperator, selectedOrbitFilter, telemetryLookup],
+    [
+      normalizedAltitudeFilter.max,
+      normalizedAltitudeFilter.min,
+      passPredictions,
+      selectedCountry,
+      selectedMission,
+      selectedOperator,
+      selectedOrbitFilter,
+      telemetryLookup,
+    ],
   )
 
   const visibleObserverUpcomingPasses = useMemo(
@@ -1036,6 +1068,15 @@ export default function App() {
     }))
   }
 
+  const handleAltitudeFilterChange = (field, rawValue) => {
+    if (rawValue !== '' && !/^[-]?\d*([.,]\d*)?$/.test(rawValue)) return
+
+    setAltitudeFilter((previous) => ({
+      ...previous,
+      [field]: rawValue.replace(',', '.'),
+    }))
+  }
+
   return (
     <div className="app-shell container-fluid px-3 px-lg-4 py-4">
       <header className="topbar d-flex flex-column flex-xxl-row align-items-start justify-content-between gap-3 gap-lg-4 mb-4">
@@ -1193,6 +1234,26 @@ export default function App() {
                     </option>
                   ))}
                 </select>
+              </div>
+            </label>
+
+            <label>
+              Высота орбиты, км
+              <div className="inline-fields">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="От"
+                  value={altitudeFilter.min}
+                  onChange={(event) => handleAltitudeFilterChange('min', event.target.value)}
+                />
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="До"
+                  value={altitudeFilter.max}
+                  onChange={(event) => handleAltitudeFilterChange('max', event.target.value)}
+                />
               </div>
             </label>
 
