@@ -416,8 +416,23 @@ input {
   pointer-events: none;
 }
 
+.observer-point {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .observer-point span {
   background: #ffd166;
+}
+
+.observer-point strong {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  text-align: center;
 }
 
 .map-city {
