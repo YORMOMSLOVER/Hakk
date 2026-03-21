@@ -1182,7 +1182,7 @@ export default function App() {
     <div className="app-shell container-fluid px-3 px-lg-4 py-4">
       <header className="topbar d-flex flex-column flex-xxl-row align-items-start justify-content-between gap-3 gap-lg-4 mb-4">
         <div>
-          <p className="eyebrow">Ситуационная осведомлённость о спутниках</p>
+          <p className="eyebrow">Отслеживание спутников</p>
           <h1>Карта и 3D-пространство спутников по TLE</h1>
           <p className="panel-copy">
             Показывает текущие положения, анимацию движения, фильтрацию, сравнение групп и
