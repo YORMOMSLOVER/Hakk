@@ -171,22 +171,35 @@ function mapCoverageEllipses(position, visibilityRadiusKm) {
   }))
 }
 
-function mapCoverageEllipses(position, visibilityRadiusKm) {
-  const angularDistance = Math.max(0, Math.min(Math.PI, visibilityRadiusKm / EARTH_RADIUS_KM))
-  const latitudeRadiusDegrees = (angularDistance * 180) / Math.PI
-  const safeLatitudeCosine = Math.max(0.18, Math.cos((clampLatitude(position.lat) * Math.PI) / 180))
-  const longitudeRadiusDegrees = Math.min(180, latitudeRadiusDegrees / safeLatitudeCosine)
-  const centerXPercent = ((normalizeLongitude(position.lng) + 180) / 360) * 100
-  const centerYPercent = ((90 - clampLatitude(position.lat)) / 180) * 100
-  const widthPercent = (longitudeRadiusDegrees / 180) * 100
-  const heightPercent = (latitudeRadiusDegrees / 90) * 100
+function coveragePolygonPaths(points, centerLongitude = 0) {
+  if (!points?.length) return []
 
-  return [-100, 0, 100].map((shift) => ({
-    left: `${centerXPercent + shift}%`,
-    top: `${centerYPercent}%`,
-    width: `${widthPercent}%`,
-    height: `${heightPercent}%`,
-  }))
+  const normalizedCenterLongitude = normalizeLongitude(centerLongitude)
+  const projectedPoints = points.map((point) => {
+    const relativeLongitude = normalizeLongitude(point.lng - normalizedCenterLongitude)
+    const wrappedLongitude = normalizedCenterLongitude + relativeLongitude
+
+    return {
+      x: ((wrappedLongitude + 180) / 360) * 1000,
+      y: ((90 - clampLatitude(point.lat)) / 180) * 500,
+    }
+  })
+
+  return [-1000, 0, 1000]
+    .map((shift) => {
+      const shiftedPoints = projectedPoints.map((point) => ({
+        x: point.x + shift,
+        y: point.y,
+      }))
+
+      const isVisible = shiftedPoints.some((point) => point.x >= 0 && point.x <= 1000)
+      if (!isVisible) return null
+
+      return shiftedPoints
+        .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+        .join(' ') + ' Z'
+    })
+    .filter(Boolean)
 }
 
 function buildSpaceDiagram(position) {
