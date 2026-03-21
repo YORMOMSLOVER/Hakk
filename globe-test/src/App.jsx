@@ -163,47 +163,48 @@ function buildWorldGrid() {
   return { verticalLines, horizontalLines }
 }
 
-function coveragePathData(points) {
+function unwrapLongitudeAroundCenter(lng, centerLng) {
+  const delta = normalizeLongitude(lng - centerLng)
+  return centerLng + delta
+}
+
+function buildCoveragePathSegment(points, offsetX = 0) {
+  if (points.length < 3) return null
+
+  const [firstPoint, ...restPoints] = points
+
+  return [
+    `M ${(firstPoint.x + offsetX).toFixed(2)} ${firstPoint.y.toFixed(2)}`,
+    ...restPoints.map((point) => `L ${(point.x + offsetX).toFixed(2)} ${point.y.toFixed(2)}`),
+    'Z',
+  ].join(' ')
+}
+
+function coveragePathData(points, centerLng) {
   if (!points?.length) return null
 
-  const projectedPoints = points.map((point) => ({
-    ...projectMapCoordinates(point.lat, point.lng),
-    lng: normalizeLongitude(point.lng),
-  }))
-  const segments = []
-  let currentSegment = []
+  const normalizedCenterLng = normalizeLongitude(centerLng ?? points[0]?.lng ?? 0)
+  const projectedPoints = points.map((point) => {
+    const unwrappedLng = unwrapLongitudeAroundCenter(point.lng, normalizedCenterLng)
 
-  projectedPoints.forEach((point, index) => {
-    const previousPoint = projectedPoints[index - 1]
-    const crossedDateLine = previousPoint && Math.abs(point.lng - previousPoint.lng) > 180
-
-    if (crossedDateLine && currentSegment.length >= 3) {
-      segments.push(currentSegment)
-      currentSegment = []
+    return {
+      x: ((unwrappedLng + 180) / 360) * MAP_VIEWBOX_WIDTH,
+      y: ((90 - clampLatitude(point.lat)) / 180) * MAP_VIEWBOX_HEIGHT,
     }
-
-    currentSegment.push(point)
   })
 
-  if (currentSegment.length >= 3) {
-    segments.push(currentSegment)
-  }
-
-  if (!segments.length) return null
-
-  return segments
-    .map((segment) => {
-      const [firstPoint, ...restPoints] = segment
-      if (!firstPoint) return null
-
-      return [
-        `M ${firstPoint.x.toFixed(2)} ${firstPoint.y.toFixed(2)}`,
-        ...restPoints.map((point) => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`),
-        'Z',
-      ].join(' ')
+  const duplicateOffsets = [0, -MAP_VIEWBOX_WIDTH, MAP_VIEWBOX_WIDTH]
+  const visiblePaths = duplicateOffsets
+    .filter((offsetX) => {
+      const xs = projectedPoints.map((point) => point.x + offsetX)
+      const minX = Math.min(...xs)
+      const maxX = Math.max(...xs)
+      return maxX >= 0 && minX <= MAP_VIEWBOX_WIDTH
     })
+    .map((offsetX) => buildCoveragePathSegment(projectedPoints, offsetX))
     .filter(Boolean)
-    .join(' ')
+
+  return visiblePaths.length > 0 ? visiblePaths.join(' ') : null
 }
 
 function buildSpaceDiagram(position) {
@@ -1293,7 +1294,7 @@ export default function App() {
                   preserveAspectRatio="none"
                 >
                   {coverageTelemetry.map((satellite) => {
-                    const pathData = coveragePathData(satellite.coveragePath)
+                    const pathData = coveragePathData(satellite.coveragePath, satellite.lng)
                     if (!pathData) return null
 
                     return (
