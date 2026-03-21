@@ -209,6 +209,44 @@ function coveragePathData(points, centerLng) {
   return visiblePaths.length > 0 ? visiblePaths.join(' ') : null
 }
 
+function buildOrbitPathSegment(points, offsetX = 0) {
+  if (points.length < 2) return null
+
+  const [firstPoint, ...restPoints] = points
+
+  return [
+    `M ${(firstPoint.x + offsetX).toFixed(2)} ${firstPoint.y.toFixed(2)}`,
+    ...restPoints.map((point) => `L ${(point.x + offsetX).toFixed(2)} ${point.y.toFixed(2)}`),
+  ].join(' ')
+}
+
+function orbitPathData(points, centerLng) {
+  if (!points?.length) return null
+
+  const normalizedCenterLng = normalizeLongitude(centerLng ?? points[0]?.lng ?? 0)
+  const projectedPoints = points.map((point) => {
+    const unwrappedLng = unwrapLongitudeAroundCenter(point.lng, normalizedCenterLng)
+
+    return {
+      x: ((unwrappedLng + 180) / 360) * MAP_VIEWBOX_WIDTH,
+      y: ((90 - clampLatitude(point.lat)) / 180) * MAP_VIEWBOX_HEIGHT,
+    }
+  })
+
+  const duplicateOffsets = [0, -MAP_VIEWBOX_WIDTH, MAP_VIEWBOX_WIDTH]
+  const visiblePaths = duplicateOffsets
+    .filter((offsetX) => {
+      const xs = projectedPoints.map((point) => point.x + offsetX)
+      const minX = Math.min(...xs)
+      const maxX = Math.max(...xs)
+      return maxX >= 0 && minX <= MAP_VIEWBOX_WIDTH
+    })
+    .map((offsetX) => buildOrbitPathSegment(projectedPoints, offsetX))
+    .filter(Boolean)
+
+  return visiblePaths.length > 0 ? visiblePaths.join(' ') : null
+}
+
 function buildSpaceDiagram(position) {
   if (!position) return null
 
@@ -734,11 +772,16 @@ export default function App() {
     return {
       showMapLabels: total <= 18,
       showGlobeLabels: total <= 36,
-      showOrbits: total <= 80,
+      showOrbits: total > 0,
       status:
         total > 100 ? 'Оптимизированный режим для 100+ объектов' : 'Полный режим визуализации',
     }
   }, [filteredTelemetry.length])
+
+  const selectedSatelliteOrbitPath = useMemo(() => {
+    if (!selectedSatellite || !renderMode.showOrbits) return null
+    return orbitPathData(selectedSatellite.orbit, selectedSatellite.lng)
+  }, [renderMode.showOrbits, selectedSatellite])
 
   const observerUpcomingPasses = useMemo(
     () =>
@@ -877,11 +920,13 @@ export default function App() {
     )
 
     globe.pathsData(
-      renderMode.showOrbits
-        ? filteredTelemetry.map((satellite) => ({
-            color: satellite.color,
-            points: satellite.orbit,
-          }))
+      renderMode.showOrbits && selectedSatellite
+        ? [
+            {
+              color: selectedSatellite.color,
+              points: selectedSatellite.orbit,
+            },
+          ]
         : [],
     )
     globe.pathPoints('points')
@@ -1421,6 +1466,20 @@ export default function App() {
                       />
                     )
                   })}
+                </svg>
+              ) : null}
+
+              {selectedSatelliteOrbitPath ? (
+                <svg
+                  className="map-orbit"
+                  viewBox={`0 0 ${MAP_VIEWBOX_WIDTH} ${MAP_VIEWBOX_HEIGHT}`}
+                  preserveAspectRatio="none"
+                >
+                  <path
+                    className="map-orbit__path"
+                    d={selectedSatelliteOrbitPath}
+                    style={{ '--orbit-color': selectedSatellite.color }}
+                  />
                 </svg>
               ) : null}
 

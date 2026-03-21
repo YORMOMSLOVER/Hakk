@@ -348,10 +348,29 @@ input {
   pointer-events: none;
 }
 
+.map-orbit {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+
 .map-coverage__footprint {
   fill: color-mix(in srgb, var(--coverage-color) 18%, transparent);
   stroke: color-mix(in srgb, var(--coverage-color) 75%, white 10%);
   stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.map-orbit__path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--orbit-color) 78%, white 22%);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 9 6;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--orbit-color) 46%, transparent));
   vector-effect: non-scaling-stroke;
 }
 

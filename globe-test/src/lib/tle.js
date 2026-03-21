@@ -403,38 +403,6 @@ const BASE_TLE_SETS = [
   },
 ]
 
-function setMeanAnomaly(line2, meanAnomalyDegrees) {
-  const normalized = ((meanAnomalyDegrees % 360) + 360) % 360
-  const field = normalized.toFixed(4).padStart(8, ' ')
-  return `${line2.slice(0, 43)}${field}${line2.slice(51)}`
-}
-
-function buildStressTestSet(baseSets, totalSatellites = 120) {
-  const baseSatellites = baseSets.flatMap((set) => set.satellites)
-  const generated = []
-
-  for (let index = 0; index < totalSatellites; index += 1) {
-    const template = baseSatellites[index % baseSatellites.length]
-    const plane = Math.floor(index / baseSatellites.length) + 1
-    const anomaly = (index * 360) / totalSatellites
-
-    generated.push({
-      ...template,
-      id: `stress-${index + 1}`,
-      name: `${template.name} • DEMO-${String(index + 1).padStart(3, '0')}`,
-      mission: 'Стресс-тест / демонстрация производительности',
-      operator: `${template.operator} / Demo plane ${plane}`,
-      line2: setMeanAnomaly(template.line2, anomaly),
-    })
-  }
-
-  return {
-    id: 'stress-test',
-    name: 'Стресс-тест 120 объектов',
-    satellites: generated,
-  }
-}
-
 export const REMOTE_TLE_SETS = [
   {
     id: 'active-200',
@@ -478,6 +446,6 @@ export async function loadRemoteTleSet(remoteSet) {
   return parsed
 }
 
-export const DEFAULT_TLE_SETS = [...BASE_TLE_SETS, ...REMOTE_TLE_SETS, buildStressTestSet(BASE_TLE_SETS)]
+export const DEFAULT_TLE_SETS = [...BASE_TLE_SETS, ...REMOTE_TLE_SETS]
 
 export const DEFAULT_TLES = DEFAULT_TLE_SETS[0].satellites
