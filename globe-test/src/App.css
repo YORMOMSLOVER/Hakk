@@ -294,16 +294,15 @@ input {
 }
 
 .map-satellite {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  width: 18px;
+  height: 18px;
   border: none;
   background: transparent;
   padding: 0;
   z-index: 3;
 }
 
-.map-satellite span,
+.map-satellite__dot,
 .observer-point span,
 .map-city span {
   width: 12px;
@@ -313,19 +312,27 @@ input {
   box-shadow: 0 0 0 6px rgba(110, 168, 255, 0.16);
 }
 
-.map-satellite.is-selected span {
+.map-satellite.is-selected .map-satellite__dot {
   width: 15px;
   height: 15px;
   box-shadow: 0 0 0 8px rgba(255, 209, 102, 0.22);
 }
 
-.map-satellite em,
+.map-satellite__label,
 .map-city small,
 .observer-point strong {
   font-style: normal;
   font-size: 0.72rem;
   white-space: nowrap;
   text-shadow: 0 3px 12px rgba(0, 0, 0, 0.7);
+}
+
+.map-satellite__label {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
 .observer-point {
@@ -460,10 +467,9 @@ input {
 }
 
 .space-diagram__vector {
-  stroke: rgba(255, 255, 255, 0.72);
-  stroke-width: 2.4;
+  stroke: rgba(255, 255, 255, 0.88);
+  stroke-width: 2.8;
   stroke-linecap: round;
-  stroke-dasharray: 6 6;
 }
 
 .space-diagram__satellite {
@@ -677,7 +683,7 @@ input {
     flex-direction: column;
   }
 
-  .map-satellite em,
+  .map-satellite__label,
   .map-city small,
   .observer-point strong {
     max-width: 110px;
