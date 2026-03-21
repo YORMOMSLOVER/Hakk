@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { geoEquirectangular, geoPath } from 'd3-geo'
 import './App.css'
 import {
   DEFAULT_TLE_SETS,
@@ -28,6 +29,13 @@ const MAP_STYLE_OPTIONS = [
   { id: 'terrain', label: 'Схема' },
   { id: 'satellite', label: 'Спутник' },
 ]
+const MAP_VIEWBOX_WIDTH = 1000
+const MAP_VIEWBOX_HEIGHT = 500
+const mapProjection = geoEquirectangular()
+  .translate([MAP_VIEWBOX_WIDTH / 2, MAP_VIEWBOX_HEIGHT / 2])
+  .scale(MAP_VIEWBOX_WIDTH / (2 * Math.PI))
+  .precision(0.3)
+const mapPathGenerator = geoPath(mapProjection)
 
 function formatNumber(value, digits = 0) {
   return new Intl.NumberFormat('ru-RU', {
@@ -152,35 +160,26 @@ function buildWorldGrid() {
   return { verticalLines, horizontalLines }
 }
 
-function coveragePolygonPaths(points, centerLongitude = 0) {
-  if (!points?.length) return []
+function coveragePathData(points) {
+  if (!points?.length) return null
 
-  const normalizedCenterLongitude = normalizeLongitude(centerLongitude)
-  const projectedPoints = points.map((point) => {
-    const relativeLongitude = normalizeLongitude(point.lng - normalizedCenterLongitude)
-    const wrappedLongitude = normalizedCenterLongitude + relativeLongitude
+  const ring = points.map((point) => [normalizeLongitude(point.lng), clampLatitude(point.lat)])
+  const firstPoint = ring[0]
+  const lastPoint = ring[ring.length - 1]
 
-    return {
-      x: ((wrappedLongitude + 180) / 360) * 1000,
-      y: ((90 - clampLatitude(point.lat)) / 180) * 500,
-    }
+  if (!firstPoint || !lastPoint) return null
+
+  if (firstPoint[0] !== lastPoint[0] || firstPoint[1] !== lastPoint[1]) {
+    ring.push([...firstPoint])
+  }
+
+  return mapPathGenerator({
+    type: 'Feature',
+    geometry: {
+      type: 'Polygon',
+      coordinates: [ring],
+    },
   })
-
-  return [-1000, 0, 1000]
-    .map((shift) => {
-      const shiftedPoints = projectedPoints.map((point) => ({
-        x: point.x + shift,
-        y: point.y,
-      }))
-
-      const isVisible = shiftedPoints.some((point) => point.x >= 0 && point.x <= 1000)
-      if (!isVisible) return null
-
-      return shiftedPoints
-        .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
-        .join(' ') + ' Z'
-    })
-    .filter(Boolean)
 }
 
 function buildSpaceDiagram(position) {
@@ -1264,17 +1263,24 @@ export default function App() {
               </svg>
 
               {coverageTelemetry.length > 0 ? (
-                <svg className="map-coverage" viewBox="0 0 1000 500" preserveAspectRatio="none">
-                  {coverageTelemetry.flatMap((satellite) =>
-                    coveragePolygonPaths(satellite.coveragePath, satellite.lng).map((pathData, index) => (
+                <svg
+                  className="map-coverage"
+                  viewBox={`0 0 ${MAP_VIEWBOX_WIDTH} ${MAP_VIEWBOX_HEIGHT}`}
+                  preserveAspectRatio="none"
+                >
+                  {coverageTelemetry.map((satellite) => {
+                    const pathData = coveragePathData(satellite.coveragePath)
+                    if (!pathData) return null
+
+                    return (
                       <path
-                        key={`${satellite.id}-coverage-footprint-${index}`}
+                        key={`${satellite.id}-coverage-footprint`}
                         className="map-coverage__footprint"
                         d={pathData}
                         style={{ '--coverage-color': satellite.color }}
                       />
-                    )),
-                  )}
+                    )
+                  })}
                 </svg>
               ) : null}
 
