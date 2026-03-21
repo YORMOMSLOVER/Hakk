@@ -678,6 +678,16 @@ input {
   padding-right: 4px;
 }
 
+.list-search-field {
+  display: block;
+  font-weight: 700;
+  color: #f4f7ff;
+}
+
+.list-search-field input {
+  margin-top: 10px;
+}
+
 .satellite-group {
   display: flex;
   flex-direction: column;
@@ -700,6 +710,11 @@ input {
 .satellite-card.is-selected {
   border-color: rgba(255, 209, 102, 0.55);
   background: rgba(255, 209, 102, 0.06);
+}
+
+.pass-list__item.is-selected {
+  border-color: rgba(108, 142, 255, 0.55);
+  background: rgba(108, 142, 255, 0.18);
 }
 
 @media (max-width: 1380px) {

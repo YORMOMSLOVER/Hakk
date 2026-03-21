@@ -556,10 +556,27 @@ export default function App() {
     [telemetryWithPasses, selectedCountry, selectedMission, selectedOperator, selectedOrbitFilter],
   )
 
+  const searchedTelemetry = useMemo(() => {
+    const normalizedQuery = satelliteListSearchQuery.trim().toLowerCase()
+    if (!normalizedQuery) return filteredTelemetry
+
+    return filteredTelemetry.filter((item) =>
+      [
+        item.name,
+        item.country,
+        item.operator,
+        item.orbitType,
+        item.mission,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedQuery)),
+    )
+  }, [filteredTelemetry, satelliteListSearchQuery])
+
   const groupedTelemetry = useMemo(() => {
     const groups = new Map()
 
-    filteredTelemetry.forEach((item) => {
+    searchedTelemetry.forEach((item) => {
       const key = groupBy === 'none' ? 'all' : groupLabel(item, groupBy)
       const title = groupBy === 'none' ? 'Все спутники' : groupLabel(item, groupBy)
       const list = groups.get(key)
@@ -572,7 +589,33 @@ export default function App() {
     })
 
     return [...groups.values()]
-  }, [filteredTelemetry, groupBy])
+  }, [groupBy, searchedTelemetry])
+
+  const visibleGroupedTelemetry = useMemo(() => {
+    if (isSatelliteListExpanded) return groupedTelemetry
+
+    let visibleCount = 0
+
+    return groupedTelemetry
+      .map((group) => {
+        if (visibleCount >= PASS_LIST_PREVIEW_COUNT) return null
+
+        const remaining = PASS_LIST_PREVIEW_COUNT - visibleCount
+        const items = group.items.slice(0, remaining)
+        visibleCount += items.length
+
+        if (items.length === 0) return null
+
+        return {
+          ...group,
+          items,
+        }
+      })
+      .filter(Boolean)
+  }, [groupedTelemetry, isSatelliteListExpanded])
+
+  const searchedTelemetryCount = searchedTelemetry.length
+  const hasHiddenSatelliteCards = searchedTelemetryCount > PASS_LIST_PREVIEW_COUNT
 
   const selectedSatellite = useMemo(
     () => filteredTelemetry.find((item) => item.id === safeSelectedSatelliteId) ?? filteredTelemetry[0] ?? null,
@@ -1544,7 +1587,7 @@ export default function App() {
                       <button
                         key={`${item.id}-pass`}
                         type="button"
-                        className="pass-list__item"
+                        className={`pass-list__item ${safeSelectedSatelliteId === item.id ? 'is-selected' : ''}`}
                         onClick={() => setSelectedSatelliteId(item.id)}
                       >
                         <span className="pass-list__swatch" style={{ backgroundColor: item.color }} />
@@ -1594,7 +1637,7 @@ export default function App() {
         <section className="list-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Список спутников</h2>
-            <p>{filteredTelemetry.length} объектов после применения фильтров и группировки.</p>
+            <p>{searchedTelemetryCount} объектов после применения фильтров, поиска и группировки.</p>
           </div>
 
           <div className="subpanel-card">
@@ -1619,14 +1662,26 @@ export default function App() {
             )}
           </div>
 
+          <div className="subpanel-card">
+            <label className="list-search-field">
+              Поиск по спутникам
+              <input
+                type="search"
+                value={satelliteListSearchQuery}
+                placeholder="Название, страна, оператор, орбита…"
+                onChange={(event) => setSatelliteListSearchQuery(event.target.value)}
+              />
+            </label>
+          </div>
+
           <div className="satellite-list pe-1">
-            {groupedTelemetry.map((group) => (
+            {visibleGroupedTelemetry.map((group) => (
               <section key={group.title} className="satellite-group">
                 <div className="satellite-group__header">{group.title}</div>
                 {group.items.map((satellite) => (
                   <article
                     key={satellite.id}
-                    className={`satellite-card ${selectedSatellite?.id === satellite.id ? 'is-selected' : ''}`}
+                    className={`satellite-card ${safeSelectedSatelliteId === satellite.id ? 'is-selected' : ''}`}
                     onClick={() => setSelectedSatelliteId(satellite.id)}
                   >
                     <div className="satellite-card__header">
@@ -1670,6 +1725,26 @@ export default function App() {
                 ))}
               </section>
             ))}
+            {hasHiddenSatelliteCards ? (
+              <button
+                type="button"
+                className="pass-list__toggle"
+                onClick={() => setIsSatelliteListExpanded((current) => !current)}
+                aria-expanded={isSatelliteListExpanded}
+                aria-label={isSatelliteListExpanded ? 'Свернуть список спутников' : 'Показать все спутники'}
+              >
+                <span>{isSatelliteListExpanded ? 'Свернуть' : 'Показать ещё'}</span>
+                <span
+                  className={`pass-list__toggle-icon${isSatelliteListExpanded ? ' pass-list__toggle-icon--expanded' : ''}`}
+                  aria-hidden="true"
+                >
+                  ↓
+                </span>
+              </button>
+            ) : null}
+            {searchedTelemetryCount === 0 ? (
+              <p className="helper-text">По текущим фильтрам и поисковому запросу спутники не найдены.</p>
+            ) : null}
           </div>
         </section>
       </main>
