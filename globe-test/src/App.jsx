@@ -44,14 +44,33 @@ function groupLabel(telemetry, mode) {
   return 'Все спутники'
 }
 
-function convertEventToLatLng(event, container) {
-  const rect = container.getBoundingClientRect()
-  const x = (event.clientX - rect.left) / rect.width
-  const y = (event.clientY - rect.top) / rect.height
+function clampMapTransform(transform, viewport) {
+  if (!viewport) return transform
+
+  const maxOffsetX = Math.max(0, ((transform.scale - 1) * viewport.width) / 2)
+  const maxOffsetY = Math.max(0, ((transform.scale - 1) * viewport.height) / 2)
 
   return {
-    lat: 90 - y * 180,
-    lng: x * 360 - 180,
+    scale: transform.scale,
+    offsetX: Math.min(maxOffsetX, Math.max(-maxOffsetX, transform.offsetX)),
+    offsetY: Math.min(maxOffsetY, Math.max(-maxOffsetY, transform.offsetY)),
+  }
+}
+
+function convertEventToLatLng(event, container, transform) {
+  const rect = container.getBoundingClientRect()
+  const x = event.clientX - rect.left
+  const y = event.clientY - rect.top
+  const centeredX = x - rect.width / 2
+  const centeredY = y - rect.height / 2
+  const surfaceX = centeredX / transform.scale + rect.width / 2 - transform.offsetX / transform.scale
+  const surfaceY = centeredY / transform.scale + rect.height / 2 - transform.offsetY / transform.scale
+  const normalizedX = Math.min(1, Math.max(0, surfaceX / rect.width))
+  const normalizedY = Math.min(1, Math.max(0, surfaceY / rect.height))
+
+  return {
+    lat: 90 - normalizedY * 180,
+    lng: normalizedX * 360 - 180,
   }
 }
 
@@ -158,6 +177,11 @@ export default function App() {
   const [selectedMission, setSelectedMission] = useState('Все')
   const [groupBy, setGroupBy] = useState('none')
   const [mapTransform, setMapTransform] = useState({ scale: 1.12, offsetX: 0, offsetY: 0 })
+
+  const clampTransform = (transform) => {
+    const viewport = mapViewportRef.current
+    return clampMapTransform(transform, viewport)
+  }
   const [observer, setObserver] = useState({ lat: 55.75, lng: 37.62, label: 'Москва' })
   const [uploadStatus, setUploadStatus] = useState('')
   const [showCoverage, setShowCoverage] = useState(true)
@@ -262,6 +286,32 @@ export default function App() {
     })
 
     resizeObserver.observe(containerElement)
+
+    return () => resizeObserver.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const viewport = mapViewportRef.current
+    if (!viewport) return undefined
+
+    const handleNativeWheel = (event) => {
+      event.preventDefault()
+    }
+
+    viewport.addEventListener('wheel', handleNativeWheel, { passive: false })
+
+    return () => viewport.removeEventListener('wheel', handleNativeWheel)
+  }, [])
+
+  useEffect(() => {
+    const viewport = mapViewportRef.current
+    if (!viewport) return undefined
+
+    const resizeObserver = new ResizeObserver(() => {
+      setMapTransform((previous) => clampMapTransform(previous, viewport))
+    })
+
+    resizeObserver.observe(viewport)
 
     return () => resizeObserver.disconnect()
   }, [])
@@ -471,10 +521,16 @@ export default function App() {
 
   const handleMapWheel = (event) => {
     event.preventDefault()
-    setMapTransform((previous) => ({
-      ...previous,
-      scale: Math.max(1, Math.min(3.4, previous.scale - event.deltaY * 0.0012)),
-    }))
+    event.stopPropagation()
+
+    setMapTransform((previous) => {
+      const nextScale = Math.max(1, Math.min(3.4, previous.scale - event.deltaY * 0.0012))
+      return clampTransform({
+        scale: nextScale,
+        offsetX: previous.offsetX,
+        offsetY: previous.offsetY,
+      })
+    })
   }
 
   const handleMapPointerDown = (event) => {
@@ -487,6 +543,7 @@ export default function App() {
       y: event.clientY,
       offsetX: mapTransform.offsetX,
       offsetY: mapTransform.offsetY,
+      scale: mapTransform.scale,
       moved: false,
     }
 
@@ -506,11 +563,13 @@ export default function App() {
       skipMapClickRef.current = true
     }
 
-    setMapTransform((previous) => ({
-      ...previous,
-      offsetX: dragState.offsetX + deltaX,
-      offsetY: dragState.offsetY + deltaY,
-    }))
+    setMapTransform(() =>
+      clampTransform({
+        scale: dragState.scale,
+        offsetX: dragState.offsetX + deltaX,
+        offsetY: dragState.offsetY + deltaY,
+      }),
+    )
   }
 
   const handleMapPointerUp = (event) => {
@@ -530,7 +589,7 @@ export default function App() {
     const viewport = mapViewportRef.current
     if (!viewport) return
 
-    const coordinates = convertEventToLatLng(event, viewport)
+    const coordinates = convertEventToLatLng(event, viewport, mapTransform)
     setObserver({
       lat: coordinates.lat,
       lng: coordinates.lng,
