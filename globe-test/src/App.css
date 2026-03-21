@@ -319,7 +319,8 @@ input {
 .map-raster,
 .map-grid,
 .map-continents,
-.map-coverage {
+.map-coverage,
+.map-orbit {
   position: absolute;
   inset: 0;
   display: block;
