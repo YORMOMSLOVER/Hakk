@@ -1247,16 +1247,13 @@ export default function App() {
             >
               <div className="map-ocean" />
               {mapStyle === 'satellite' ? (
-                <svg className="map-raster" viewBox="0 0 1000 500" preserveAspectRatio="none" aria-hidden="true">
-                  <image
-                    href="https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-                    x="0"
-                    y="0"
-                    width="1000"
-                    height="500"
-                    preserveAspectRatio="none"
-                  />
-                </svg>
+                <img
+                  className="map-raster"
+                  src="https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
+                  alt=""
+                  aria-hidden="true"
+                  draggable="false"
+                />
               ) : null}
               <div className="map-grid">
                 {worldGrid.verticalLines}

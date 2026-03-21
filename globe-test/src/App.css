@@ -282,11 +282,12 @@ input {
 
 .map-raster {
   z-index: 1;
-}
-
-.map-raster image {
+  display: block;
   width: 100%;
   height: 100%;
+  object-fit: fill;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .map-viewport--satellite .map-ocean {
