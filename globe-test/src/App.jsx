@@ -57,20 +57,34 @@ function clampMapTransform(transform, viewport) {
   }
 }
 
+function normalizeLongitude(value) {
+  const normalized = ((value + 180) % 360 + 360) % 360 - 180
+  return normalized === -180 ? 180 : normalized
+}
+
+function clampLatitude(value) {
+  return Math.max(-90, Math.min(90, value))
+}
+
 function convertEventToLatLng(event, container, transform) {
   const rect = container.getBoundingClientRect()
-  const x = event.clientX - rect.left
-  const y = event.clientY - rect.top
-  const centeredX = x - rect.width / 2
-  const centeredY = y - rect.height / 2
-  const surfaceX = centeredX / transform.scale + rect.width / 2 - transform.offsetX / transform.scale
-  const surfaceY = centeredY / transform.scale + rect.height / 2 - transform.offsetY / transform.scale
-  const normalizedX = Math.min(1, Math.max(0, surfaceX / rect.width))
-  const normalizedY = Math.min(1, Math.max(0, surfaceY / rect.height))
+  const originX = rect.width / 2
+  const originY = rect.height / 2
+  const localX = (event.clientX - rect.left - transform.offsetX - originX) / transform.scale + originX
+  const localY = (event.clientY - rect.top - transform.offsetY - originY) / transform.scale + originY
+  const normalizedX = Math.min(1, Math.max(0, localX / rect.width))
+  const normalizedY = Math.min(1, Math.max(0, localY / rect.height))
 
   return {
-    lat: 90 - normalizedY * 180,
-    lng: normalizedX * 360 - 180,
+    lat: clampLatitude(90 - normalizedY * 180),
+    lng: normalizeLongitude(normalizedX * 360 - 180),
+  }
+}
+
+function projectMapPosition(lat, lng) {
+  return {
+    left: `${((normalizeLongitude(lng) + 180) / 360) * 100}%`,
+    top: `${((90 - clampLatitude(lat)) / 180) * 100}%`,
   }
 }
 
@@ -213,10 +227,13 @@ export default function App() {
       .pointRadius(0.6)
       .pointResolution(20)
       .pointAltitude('altitude')
+      .pointsTransitionDuration(0)
       .pointColor('color')
       .pointLabel((point) => point.name)
       .pathColor('color')
       .pathStroke(0.9)
+      .pathTransitionDuration(0)
+      .pathDashAnimateTime(0)
       .pathPointLat((point) => point.lat)
       .pathPointLng((point) => point.lng)
       .pathPointAlt((point) => point.altitude)
@@ -226,10 +243,12 @@ export default function App() {
       .labelText('text')
       .labelColor('color')
       .labelSize(1.2)
+      .labelsTransitionDuration(0)
       .labelDotRadius(0.2)
       .htmlLat('lat')
       .htmlLng('lng')
       .htmlAltitude('altitude')
+      .htmlTransitionDuration(0)
       .htmlElement((item) => {
         const element = document.createElement('div')
         element.className = 'globe-selection-badge'
@@ -247,6 +266,7 @@ export default function App() {
       .polygonStrokeColor((polygon) => polygon.strokeColor)
       .polygonAltitude(0.001)
       .polygonLabel((polygon) => polygon.name)
+      .polygonsTransitionDuration(0)
 
     globe.controls().enablePan = true
     globe.controls().zoomSpeed = 0.8
@@ -586,6 +606,8 @@ export default function App() {
 
   const handleMapClick = (event) => {
     if (skipMapClickRef.current) return
+    if (event.target instanceof Element && event.target.closest('[data-map-satellite="true"]')) return
+
     const viewport = mapViewportRef.current
     if (!viewport) return
 
@@ -822,10 +844,13 @@ export default function App() {
                   key={satellite.id}
                   type="button"
                   className={`map-satellite ${selectedSatellite?.id === satellite.id ? 'is-selected' : ''}`}
+                  data-map-satellite="true"
                   style={{
-                    left: `${((satellite.lng + 180) / 360) * 100}%`,
-                    top: `${((90 - satellite.lat) / 180) * 100}%`,
+                    ...projectMapPosition(satellite.lat, satellite.lng),
                     '--satellite-color': satellite.color,
+                  }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation()
                   }}
                   onClick={(event) => {
                     event.stopPropagation()
@@ -833,17 +858,14 @@ export default function App() {
                   }}
                   title={`${satellite.name} • зона покрытия ≈ ${formatNumber(satellite.visibilityRadiusKm, 0)} км`}
                 >
-                  <span />
-                  <em>{satellite.name}</em>
+                  <span className="map-satellite__dot" />
+                  <em className="map-satellite__label">{satellite.name}</em>
                 </button>
               ))}
 
               <div
                 className="observer-point"
-                style={{
-                  left: `${((observer.lng + 180) / 360) * 100}%`,
-                  top: `${((90 - observer.lat) / 180) * 100}%`,
-                }}
+                style={projectMapPosition(observer.lat, observer.lng)}
               >
                 <span />
                 <strong>{observer.label}</strong>
@@ -853,10 +875,7 @@ export default function App() {
                 <div
                   key={marker.name}
                   className="map-city"
-                  style={{
-                    left: `${((marker.lng + 180) / 360) * 100}%`,
-                    top: `${((90 - marker.lat) / 180) * 100}%`,
-                  }}
+                  style={projectMapPosition(marker.lat, marker.lng)}
                 >
                   <span />
                   <small>{marker.name}</small>
