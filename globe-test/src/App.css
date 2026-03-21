@@ -266,6 +266,7 @@ input {
 }
 
 .map-ocean,
+.map-raster,
 .map-grid,
 .map-continents {
   position: absolute;
@@ -279,14 +280,27 @@ input {
     linear-gradient(180deg, rgba(7, 31, 67, 0.96), rgba(4, 14, 38, 0.98));
 }
 
+.map-raster {
+  z-index: 1;
+}
+
+.map-raster image {
+  width: 100%;
+  height: 100%;
+}
+
 .map-viewport--satellite .map-ocean {
-  background:
-    linear-gradient(180deg, rgba(3, 10, 24, 0.16), rgba(3, 10, 24, 0.28)),
-    url('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg') center / cover no-repeat;
+  background: linear-gradient(180deg, rgba(3, 10, 24, 0.14), rgba(3, 10, 24, 0.32));
+  z-index: 1;
 }
 
 .map-viewport--satellite .map-continents {
   opacity: 0;
+}
+
+.map-viewport--satellite .map-raster + .map-grid,
+.map-viewport--satellite .map-grid {
+  z-index: 2;
 }
 
 .map-viewport--satellite .map-grid__line {
