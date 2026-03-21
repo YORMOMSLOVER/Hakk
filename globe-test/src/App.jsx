@@ -18,6 +18,7 @@ const ORBIT_FILTERS = ['Все', 'LEO', 'MEO', 'GEO', 'HEO']
 const SIMULATION_WINDOW_MINUTES = 12 * 60
 const PASS_LOOKAHEAD_HOURS = 36
 const PASS_LIST_LIMIT = 8
+const PASS_LIST_PREVIEW_COUNT = 3
 const WORLD_MAP_MARKERS = [
   { name: 'Байконур', lat: 45.92, lng: 63.34 },
   { name: 'Канаверал', lat: 28.39, lng: -80.6 },
@@ -255,6 +256,7 @@ export default function App() {
   const [globeStatus, setGlobeStatus] = useState('loading')
   const [passPredictions, setPassPredictions] = useState([])
   const [passStatus, setPassStatus] = useState('idle')
+  const [isPassListExpanded, setIsPassListExpanded] = useState(false)
 
   const worldGrid = useMemo(() => buildWorldGrid(), [])
 
@@ -618,9 +620,26 @@ export default function App() {
           if (selectedMission !== 'Все' && item.mission !== selectedMission) return false
           return true
         })
+        .sort((left, right) => left.nextPass.time.getTime() - right.nextPass.time.getTime())
         .slice(0, PASS_LIST_LIMIT),
     [passPredictions, selectedCountry, selectedMission, selectedOperator, selectedOrbitFilter, telemetryLookup],
   )
+
+  const visibleObserverUpcomingPasses = useMemo(
+    () =>
+      isPassListExpanded
+        ? observerUpcomingPasses
+        : observerUpcomingPasses.slice(0, PASS_LIST_PREVIEW_COUNT),
+    [isPassListExpanded, observerUpcomingPasses],
+  )
+
+  const hasHiddenObserverUpcomingPasses = observerUpcomingPasses.length > PASS_LIST_PREVIEW_COUNT
+
+  useEffect(() => {
+    if (!hasHiddenObserverUpcomingPasses && isPassListExpanded) {
+      setIsPassListExpanded(false)
+    }
+  }, [hasHiddenObserverUpcomingPasses, isPassListExpanded])
 
   const comparisonMode = groupBy === 'none' ? 'orbitType' : groupBy
   const comparisonRows = useMemo(() => {
@@ -1521,7 +1540,7 @@ export default function App() {
                 </div>
                 {observerUpcomingPasses.length > 0 ? (
                   <div className="pass-list">
-                    {observerUpcomingPasses.map((item) => (
+                    {visibleObserverUpcomingPasses.map((item) => (
                       <button
                         key={`${item.id}-pass`}
                         type="button"
@@ -1538,6 +1557,23 @@ export default function App() {
                         <span>{formatNumber(item.nextPass.distanceKm, 0)} км</span>
                       </button>
                     ))}
+                    {hasHiddenObserverUpcomingPasses ? (
+                      <button
+                        type="button"
+                        className="pass-list__toggle"
+                        onClick={() => setIsPassListExpanded((current) => !current)}
+                        aria-expanded={isPassListExpanded}
+                        aria-label={isPassListExpanded ? 'Свернуть список пролётов' : 'Показать все пролёты'}
+                      >
+                        <span>{isPassListExpanded ? 'Свернуть' : 'Показать ещё'}</span>
+                        <span
+                          className={`pass-list__toggle-icon${isPassListExpanded ? ' pass-list__toggle-icon--expanded' : ''}`}
+                          aria-hidden="true"
+                        >
+                          ↓
+                        </span>
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
                   <p className="helper-text">Над текущей точкой наблюдения нет пролётов в расчётном окне.</p>
