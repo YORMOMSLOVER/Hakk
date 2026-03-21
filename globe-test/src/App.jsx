@@ -19,6 +19,7 @@ const SIMULATION_WINDOW_MINUTES = 12 * 60
 const PASS_LOOKAHEAD_HOURS = 36
 const PASS_LIST_LIMIT = 8
 const PASS_LIST_PREVIEW_COUNT = 3
+const EARTH_RADIUS_KM = 6371
 const WORLD_MAP_MARKERS = [
   { name: 'Байконур', lat: 45.92, lng: 63.34 },
   { name: 'Канаверал', lat: 28.39, lng: -80.6 },
@@ -118,17 +119,6 @@ function convertEventToLatLng(event, container, transform) {
   }
 }
 
-function wrapLongitudeNear(lng, referenceLng = 0) {
-  const normalizedLongitude = normalizeLongitude(lng)
-  const normalizedReference = normalizeLongitude(referenceLng)
-  let delta = normalizedLongitude - normalizedReference
-
-  if (delta > 180) delta -= 360
-  if (delta < -180) delta += 360
-
-  return normalizedReference + delta
-}
-
 function projectMapPosition(lat, lng) {
   return {
     left: `${((normalizeLongitude(lng) + 180) / 360) * 100}%`,
@@ -163,26 +153,22 @@ function buildWorldGrid() {
   return { verticalLines, horizontalLines }
 }
 
-function latLngToMapPoint(lat, lng, referenceLng = 0) {
-  const wrappedLongitude = wrapLongitudeNear(lng, referenceLng)
+function mapCoverageEllipses(position, visibilityRadiusKm) {
+  const angularDistance = Math.max(0, Math.min(Math.PI, visibilityRadiusKm / EARTH_RADIUS_KM))
+  const latitudeRadiusDegrees = (angularDistance * 180) / Math.PI
+  const safeLatitudeCosine = Math.max(0.18, Math.cos((clampLatitude(position.lat) * Math.PI) / 180))
+  const longitudeRadiusDegrees = Math.min(180, latitudeRadiusDegrees / safeLatitudeCosine)
+  const centerXPercent = ((normalizeLongitude(position.lng) + 180) / 360) * 100
+  const centerYPercent = ((90 - clampLatitude(position.lat)) / 180) * 100
+  const widthPercent = (longitudeRadiusDegrees / 180) * 100
+  const heightPercent = (latitudeRadiusDegrees / 90) * 100
 
-  return {
-    x: ((wrappedLongitude + 180) / 360) * 1000,
-    y: ((90 - clampLatitude(lat)) / 180) * 500,
-  }
-}
-
-function coveragePolygonPaths(path, referenceLng) {
-  if (!path.length) return []
-
-  const wrappedPoints = path.map((point) => latLngToMapPoint(point.lat, point.lng, referenceLng))
-
-  return [-1000, 0, 1000].map((shift) =>
-    [
-      ...wrappedPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x + shift} ${point.y}`),
-      'Z',
-    ].join(' '),
-  )
+  return [-100, 0, 100].map((shift) => ({
+    left: `${centerXPercent + shift}%`,
+    top: `${centerYPercent}%`,
+    width: `${widthPercent}%`,
+    height: `${heightPercent}%`,
+  }))
 }
 
 function buildSpaceDiagram(position) {
@@ -1266,18 +1252,20 @@ export default function App() {
               </svg>
 
               {coverageTelemetry.length > 0 ? (
-                <svg className="map-coverage" viewBox="0 0 1000 500" preserveAspectRatio="none">
+                <div className="map-coverage" aria-hidden="true">
                   {coverageTelemetry.flatMap((satellite) =>
-                    coveragePolygonPaths(satellite.coveragePath, satellite.lng).map((pathData, index) => (
-                      <path
-                        key={`${satellite.id}-coverage-${index}`}
-                        className="map-coverage__polygon"
-                        d={pathData}
-                        style={{ '--coverage-color': satellite.color }}
+                    mapCoverageEllipses(satellite, satellite.visibilityRadiusKm).map((style, index) => (
+                      <div
+                        key={`${satellite.id}-coverage-ellipse-${index}`}
+                        className="map-coverage__ellipse"
+                        style={{
+                          ...style,
+                          '--coverage-color': satellite.color,
+                        }}
                       />
                     )),
                   )}
-                </svg>
+                </div>
               ) : null}
 
               {filteredTelemetry.map((satellite) => (

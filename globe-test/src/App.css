@@ -339,11 +339,13 @@ input {
   pointer-events: none;
 }
 
-.map-coverage__polygon {
-  fill: color-mix(in srgb, var(--coverage-color) 18%, transparent);
-  stroke: color-mix(in srgb, var(--coverage-color) 75%, white 10%);
-  stroke-width: 1.6;
-  vector-effect: non-scaling-stroke;
+.map-coverage__ellipse {
+  position: absolute;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: color-mix(in srgb, var(--coverage-color) 16%, transparent);
+  border: 2px solid color-mix(in srgb, var(--coverage-color) 74%, white 10%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--coverage-color) 30%, transparent);
 }
 
 .map-satellite,
