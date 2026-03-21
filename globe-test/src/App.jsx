@@ -1281,7 +1281,8 @@ export default function App() {
           </div>
         </section>
 
-        <section className="visual-panel panel shadow-lg">
+        <div className="dashboard-main-column w-100">
+          <section className="visual-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Положения спутников на карте</h2>
             <p>Колесо мыши или кнопки — масштаб, перетаскивание — перемещение, клик — выбрать точку наблюдения.</p>
@@ -1404,9 +1405,9 @@ export default function App() {
               ))}
             </div>
           </div>
-        </section>
+          </section>
 
-        <section className="space-panel panel shadow-lg">
+          <section className="space-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Положения спутников в пространстве</h2>
             <p>
@@ -1529,9 +1530,11 @@ export default function App() {
               </div>
             </article>
           ) : null}
-        </section>
+          </section>
+        </div>
 
-        <section className="details-panel panel shadow-lg">
+        <div className="dashboard-side-column w-100">
+          <section className="details-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Карточка спутника</h2>
             <p>Выберите спутник на карте или в списке справа, чтобы увидеть его текущие параметры.</p>
@@ -1721,9 +1724,9 @@ export default function App() {
           ) : (
             <p className="helper-text">Нет спутников, удовлетворяющих текущим фильтрам.</p>
           )}
-        </section>
+          </section>
 
-        <section className="list-panel panel shadow-lg">
+          <section className="list-panel panel shadow-lg">
           <div className="panel-heading">
             <h2>Список спутников</h2>
             <p>{searchedTelemetryCount} объектов после применения фильтров, поиска и группировки.</p>
@@ -1835,7 +1838,8 @@ export default function App() {
               <p className="helper-text">По текущим фильтрам и поисковому запросу спутники не найдены.</p>
             ) : null}
           </div>
-        </section>
+          </section>
+        </div>
       </main>
     </div>
   )
