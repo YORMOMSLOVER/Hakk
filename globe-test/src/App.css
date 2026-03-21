@@ -339,6 +339,22 @@ input {
   pointer-events: none;
 }
 
+.map-coverage__polygon {
+  fill: transparent;
+  stroke: transparent;
+}
+
+.map-coverage__outline {
+  fill: color-mix(in srgb, var(--coverage-color) 18%, transparent);
+  stroke: color-mix(in srgb, var(--coverage-color) 75%, white 10%);
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.map-coverage--ellipses {
+  z-index: 3;
+}
+
 .map-coverage__ellipse {
   position: absolute;
   border-radius: 999px;

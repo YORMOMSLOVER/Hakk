@@ -171,6 +171,24 @@ function mapCoverageEllipses(position, visibilityRadiusKm) {
   }))
 }
 
+function mapCoverageEllipses(position, visibilityRadiusKm) {
+  const angularDistance = Math.max(0, Math.min(Math.PI, visibilityRadiusKm / EARTH_RADIUS_KM))
+  const latitudeRadiusDegrees = (angularDistance * 180) / Math.PI
+  const safeLatitudeCosine = Math.max(0.18, Math.cos((clampLatitude(position.lat) * Math.PI) / 180))
+  const longitudeRadiusDegrees = Math.min(180, latitudeRadiusDegrees / safeLatitudeCosine)
+  const centerXPercent = ((normalizeLongitude(position.lng) + 180) / 360) * 100
+  const centerYPercent = ((90 - clampLatitude(position.lat)) / 180) * 100
+  const widthPercent = (longitudeRadiusDegrees / 180) * 100
+  const heightPercent = (latitudeRadiusDegrees / 90) * 100
+
+  return [-100, 0, 100].map((shift) => ({
+    left: `${centerXPercent + shift}%`,
+    top: `${centerYPercent}%`,
+    width: `${widthPercent}%`,
+    height: `${heightPercent}%`,
+  }))
+}
+
 function buildSpaceDiagram(position) {
   if (!position) return null
 
@@ -1252,20 +1270,35 @@ export default function App() {
               </svg>
 
               {coverageTelemetry.length > 0 ? (
-                <div className="map-coverage" aria-hidden="true">
-                  {coverageTelemetry.flatMap((satellite) =>
-                    mapCoverageEllipses(satellite, satellite.visibilityRadiusKm).map((style, index) => (
-                      <div
-                        key={`${satellite.id}-coverage-ellipse-${index}`}
-                        className="map-coverage__ellipse"
-                        style={{
-                          ...style,
-                          '--coverage-color': satellite.color,
-                        }}
-                      />
-                    )),
-                  )}
-                </div>
+                <>
+                  <svg className="map-coverage" viewBox="0 0 1000 500" preserveAspectRatio="none">
+                    {coverageTelemetry.flatMap((satellite) =>
+                      coveragePolygonPaths(satellite.coveragePath, satellite.lng).map((pathData, index) => (
+                        <path
+                          key={`${satellite.id}-coverage-outline-${index}`}
+                          className="map-coverage__outline"
+                          d={pathData}
+                          style={{ '--coverage-color': satellite.color }}
+                        />
+                      )),
+                    )}
+                  </svg>
+
+                  <div className="map-coverage map-coverage--ellipses" aria-hidden="true">
+                    {coverageTelemetry.flatMap((satellite) =>
+                      mapCoverageEllipses(satellite, satellite.visibilityRadiusKm).map((style, index) => (
+                        <div
+                          key={`${satellite.id}-coverage-ellipse-${index}`}
+                          className="map-coverage__ellipse"
+                          style={{
+                            ...style,
+                            '--coverage-color': satellite.color,
+                          }}
+                        />
+                      )),
+                    )}
+                  </div>
+                </>
               ) : null}
 
               {filteredTelemetry.map((satellite) => (
