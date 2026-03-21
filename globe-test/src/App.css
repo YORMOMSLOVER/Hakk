@@ -127,11 +127,20 @@ input {
   display: grid;
   width: 100%;
   grid-template-columns: 340px minmax(0, 1.1fr) minmax(360px, 0.9fr);
-  grid-template-areas:
-    'controls visual details'
-    'controls space list';
   gap: 18px;
-  align-items: stretch;
+  align-items: start;
+}
+
+.dashboard-main-column,
+.dashboard-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.dashboard-main-column {
+  min-width: 0;
 }
 
 .panel {
@@ -176,7 +185,6 @@ input {
 }
 
 .visual-panel {
-  grid-area: visual;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -185,21 +193,18 @@ input {
 }
 
 .space-panel {
-  grid-area: space;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
 .details-panel {
-  grid-area: details;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
 .list-panel {
-  grid-area: list;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -740,10 +745,10 @@ input {
 @media (max-width: 1380px) {
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas:
-      'controls controls'
-      'visual details'
-      'space list';
+  }
+
+  .controls-panel {
+    grid-column: 1 / -1;
   }
 }
 
@@ -763,12 +768,10 @@ input {
 
   .dashboard-grid {
     grid-template-columns: 1fr;
-    grid-template-areas:
-      'controls'
-      'visual'
-      'space'
-      'details'
-      'list';
+  }
+
+  .controls-panel {
+    grid-column: auto;
   }
 
   .detail-grid,
