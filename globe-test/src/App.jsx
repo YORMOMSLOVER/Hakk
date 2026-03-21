@@ -317,6 +317,7 @@ export default function App() {
   const [observer, setObserver] = useState({ lat: 55.75, lng: 37.62, label: 'Москва' })
   const [observerInputs, setObserverInputs] = useState({ lat: '55.75', lng: '37.62' })
   const [uploadStatus, setUploadStatus] = useState('')
+  const [selectedTleFileName, setSelectedTleFileName] = useState('Файл не выбран')
   const [showCoverage, setShowCoverage] = useState(true)
   const [globeViewport, setGlobeViewport] = useState({ width: 0, height: 0, isPortrait: false })
   const [globeStatus, setGlobeStatus] = useState('loading')
@@ -965,11 +966,14 @@ export default function App() {
     setSourceType('preset')
     setActiveSetId(event.target.value)
     setUploadStatus('')
+    setSelectedTleFileName('Файл не выбран')
   }
 
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
+
+    setSelectedTleFileName(file.name)
 
     const content = await file.text()
     const parsed = parseTleText(content, file.name)
@@ -1209,7 +1213,11 @@ export default function App() {
 
             <label>
               Загрузить TLE-файл
-              <input type="file" accept=".txt,.tle,.3le" onChange={handleFileUpload} />
+              <span className="file-picker">
+                <span className="file-picker__button">Выбрать TLE-файл</span>
+                <span className="file-picker__filename">{selectedTleFileName}</span>
+                <input type="file" accept=".txt,.tle,.3le" onChange={handleFileUpload} />
+              </span>
             </label>
 
             {uploadStatus ? <p className="helper-text">{uploadStatus}</p> : null}
