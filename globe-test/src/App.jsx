@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { geoEquirectangular, geoPath } from 'd3-geo'
 import './App.css'
 import {
   DEFAULT_TLE_SETS,
@@ -31,11 +30,6 @@ const MAP_STYLE_OPTIONS = [
 ]
 const MAP_VIEWBOX_WIDTH = 1000
 const MAP_VIEWBOX_HEIGHT = 500
-const mapProjection = geoEquirectangular()
-  .translate([MAP_VIEWBOX_WIDTH / 2, MAP_VIEWBOX_HEIGHT / 2])
-  .scale(MAP_VIEWBOX_WIDTH / (2 * Math.PI))
-  .precision(0.3)
-const mapPathGenerator = geoPath(mapProjection)
 
 function formatNumber(value, digits = 0) {
   return new Intl.NumberFormat('ru-RU', {
@@ -127,9 +121,18 @@ function convertEventToLatLng(event, container, transform) {
 }
 
 function projectMapPosition(lat, lng) {
+  const { x, y } = projectMapCoordinates(lat, lng)
+
   return {
-    left: `${((normalizeLongitude(lng) + 180) / 360) * 100}%`,
-    top: `${((90 - clampLatitude(lat)) / 180) * 100}%`,
+    left: `${(x / MAP_VIEWBOX_WIDTH) * 100}%`,
+    top: `${(y / MAP_VIEWBOX_HEIGHT) * 100}%`,
+  }
+}
+
+function projectMapCoordinates(lat, lng) {
+  return {
+    x: ((normalizeLongitude(lng) + 180) / 360) * MAP_VIEWBOX_WIDTH,
+    y: ((90 - clampLatitude(lat)) / 180) * MAP_VIEWBOX_HEIGHT,
   }
 }
 
@@ -163,23 +166,44 @@ function buildWorldGrid() {
 function coveragePathData(points) {
   if (!points?.length) return null
 
-  const ring = points.map((point) => [normalizeLongitude(point.lng), clampLatitude(point.lat)])
-  const firstPoint = ring[0]
-  const lastPoint = ring[ring.length - 1]
+  const projectedPoints = points.map((point) => ({
+    ...projectMapCoordinates(point.lat, point.lng),
+    lng: normalizeLongitude(point.lng),
+  }))
+  const segments = []
+  let currentSegment = []
 
-  if (!firstPoint || !lastPoint) return null
+  projectedPoints.forEach((point, index) => {
+    const previousPoint = projectedPoints[index - 1]
+    const crossedDateLine = previousPoint && Math.abs(point.lng - previousPoint.lng) > 180
 
-  if (firstPoint[0] !== lastPoint[0] || firstPoint[1] !== lastPoint[1]) {
-    ring.push([...firstPoint])
+    if (crossedDateLine && currentSegment.length >= 3) {
+      segments.push(currentSegment)
+      currentSegment = []
+    }
+
+    currentSegment.push(point)
+  })
+
+  if (currentSegment.length >= 3) {
+    segments.push(currentSegment)
   }
 
-  return mapPathGenerator({
-    type: 'Feature',
-    geometry: {
-      type: 'Polygon',
-      coordinates: [ring],
-    },
-  })
+  if (!segments.length) return null
+
+  return segments
+    .map((segment) => {
+      const [firstPoint, ...restPoints] = segment
+      if (!firstPoint) return null
+
+      return [
+        `M ${firstPoint.x.toFixed(2)} ${firstPoint.y.toFixed(2)}`,
+        ...restPoints.map((point) => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`),
+        'Z',
+      ].join(' ')
+    })
+    .filter(Boolean)
+    .join(' ')
 }
 
 function buildSpaceDiagram(position) {
