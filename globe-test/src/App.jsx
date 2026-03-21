@@ -109,6 +109,17 @@ function convertEventToLatLng(event, container, transform) {
   }
 }
 
+function wrapLongitudeNear(lng, referenceLng = 0) {
+  const normalizedLongitude = normalizeLongitude(lng)
+  const normalizedReference = normalizeLongitude(referenceLng)
+  let delta = normalizedLongitude - normalizedReference
+
+  if (delta > 180) delta -= 360
+  if (delta < -180) delta += 360
+
+  return normalizedReference + delta
+}
+
 function projectMapPosition(lat, lng) {
   return {
     left: `${((normalizeLongitude(lng) + 180) / 360) * 100}%`,
@@ -143,20 +154,26 @@ function buildWorldGrid() {
   return { verticalLines, horizontalLines }
 }
 
-function latLngToMapPoint(lat, lng) {
+function latLngToMapPoint(lat, lng, referenceLng = 0) {
+  const wrappedLongitude = wrapLongitudeNear(lng, referenceLng)
+
   return {
-    x: ((lng + 180) / 360) * 1000,
-    y: ((90 - lat) / 180) * 500,
+    x: ((wrappedLongitude + 180) / 360) * 1000,
+    y: ((90 - clampLatitude(lat)) / 180) * 500,
   }
 }
 
-function coveragePolygonPoints(path) {
-  return path
-    .map((point) => {
-      const coordinates = latLngToMapPoint(point.lat, point.lng)
-      return `${coordinates.x},${coordinates.y}`
-    })
-    .join(' ')
+function coveragePolygonPaths(path, referenceLng) {
+  if (!path.length) return []
+
+  const wrappedPoints = path.map((point) => latLngToMapPoint(point.lat, point.lng, referenceLng))
+
+  return [-1000, 0, 1000].map((shift) =>
+    [
+      ...wrappedPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x + shift} ${point.y}`),
+      'Z',
+    ].join(' '),
+  )
 }
 
 function buildSpaceDiagram(position) {
@@ -1159,6 +1176,18 @@ export default function App() {
               }}
             >
               <div className="map-ocean" />
+              {mapStyle === 'satellite' ? (
+                <svg className="map-raster" viewBox="0 0 1000 500" preserveAspectRatio="none" aria-hidden="true">
+                  <image
+                    href="https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
+                    x="0"
+                    y="0"
+                    width="1000"
+                    height="500"
+                    preserveAspectRatio="none"
+                  />
+                </svg>
+              ) : null}
               <div className="map-grid">
                 {worldGrid.verticalLines}
                 {worldGrid.horizontalLines}
@@ -1169,14 +1198,16 @@ export default function App() {
 
               {coverageTelemetry.length > 0 ? (
                 <svg className="map-coverage" viewBox="0 0 1000 500" preserveAspectRatio="none">
-                  {coverageTelemetry.map((satellite) => (
-                    <polygon
-                      key={`${satellite.id}-coverage`}
-                      className="map-coverage__polygon"
-                      points={coveragePolygonPoints(satellite.coveragePath)}
-                      style={{ '--coverage-color': satellite.color }}
-                    />
-                  ))}
+                  {coverageTelemetry.flatMap((satellite) =>
+                    coveragePolygonPaths(satellite.coveragePath, satellite.lng).map((pathData, index) => (
+                      <path
+                        key={`${satellite.id}-coverage-${index}`}
+                        className="map-coverage__polygon"
+                        d={pathData}
+                        style={{ '--coverage-color': satellite.color }}
+                      />
+                    )),
+                  )}
                 </svg>
               ) : null}
 
