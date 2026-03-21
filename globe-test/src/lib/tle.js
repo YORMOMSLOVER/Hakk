@@ -300,6 +300,27 @@ export const DEFAULT_COLORS = ['#ff6b6b', '#4ecdc4', '#ffd166', '#7b8cff', '#9b5
 
 const ACTIVE_PAYLOAD_LIMIT = 200
 const CULLABLE_NAME_PATTERNS = [/\bDEB\b/i, /\bR\/B\b/i, /\bOBJECT\b/i, /\bAKM\b/i]
+const REMOTE_MISSION_RULES = [
+  { mission: 'Пилотируемая станция', patterns: [/\bISS\b/i, /\bTIANGONG\b/i, /\bCSS\b/i] },
+  { mission: 'Навигация', patterns: [/\bGPS\b/i, /\bGLONASS\b/i, /\bGALILEO\b/i, /\bBEIDOU\b/i, /\bQZS\b/i, /\bIRNSS\b/i, /\bNAVIC\b/i] },
+  { mission: 'Погода', patterns: [/\bNOAA\b/i, /\bGOES\b/i, /\bMETEOR\b/i, /\bMETOP\b/i, /\bHIMAWARI\b/i, /\bFENGYUN\b/i, /\bJPSS\b/i, /\bGOMS\b/i] },
+  { mission: 'Дистанционное зондирование', patterns: [/\bSENTINEL\b/i, /\bLANDSAT\b/i, /\bTERRA\b/i, /\bAQUA\b/i, /\bRESURS\b/i, /\bKANOPUS\b/i, /\bGAOFEN\b/i, /\bWORLDVIEW\b/i, /\bPLEIADES\b/i, /\bSKYSAT\b/i, /\bCARTOSAT\b/i, /\bKOMPSAT\b/i, /\bICEYE\b/i, /\bCAPELLA\b/i] },
+  { mission: 'Научный', patterns: [/\bHUBBLE\b/i, /\bJWST\b/i, /\bIXPE\b/i, /\bTESS\b/i, /\bSWIFT\b/i, /\bFermi\b/i, /\bXMM\b/i, /\bCHANDRAYAAN\b/i] },
+  { mission: 'Военный', patterns: [/\bNROL\b/i, /\bUSA\b/i, /\bAEHF\b/i, /\bSBIRS\b/i, /\bCOSMOS\b/i, /\bYAOGAN\b/i] },
+  { mission: 'Связь', patterns: [/\bSTARLINK\b/i, /\bONEWEB\b/i, /\bIRIDIUM\b/i, /\bSES\b/i, /\bINTELSAT\b/i, /\bEUTELSAT\b/i, /\bINMARSAT\b/i, /\bVIASAT\b/i, /\bO3B\b/i, /\bGLOBALSTAR\b/i, /\bTDRS\b/i, /\bASTRA\b/i, /\bTELSTAR\b/i, /\bAMOS\b/i, /\bJCSAT\b/i, /\bEXPRESS\b/i, /\bMERIDIAN\b/i] },
+]
+
+export function inferRemoteMission(name, fallbackMission = 'Активные спутники') {
+  const normalizedName = name.trim()
+
+  for (const rule of REMOTE_MISSION_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(normalizedName))) {
+      return rule.mission
+    }
+  }
+
+  return fallbackMission
+}
 
 const BASE_TLE_SETS = [
   {
@@ -436,7 +457,7 @@ export async function loadRemoteTleSet(remoteSet) {
       id: `${remoteSet.id}-${index + 1}`,
       country: remoteSet.country,
       operator: remoteSet.operator,
-      mission: remoteSet.mission,
+      mission: inferRemoteMission(satellite.name, remoteSet.mission),
     }))
 
   if (parsed.length === 0) {
