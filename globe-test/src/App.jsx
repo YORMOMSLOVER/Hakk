@@ -246,6 +246,7 @@ export default function App() {
   const [selectedOperator, setSelectedOperator] = useState('Все')
   const [selectedMission, setSelectedMission] = useState('Все')
   const [groupBy, setGroupBy] = useState('none')
+  const [satelliteListSearchQuery, setSatelliteListSearchQuery] = useState('')
   const [mapTransform, setMapTransform] = useState({ scale: 1, offsetX: 0, offsetY: 0 })
   const [mapStyle, setMapStyle] = useState('satellite')
   const [observer, setObserver] = useState({ lat: 55.75, lng: 37.62, label: 'Москва' })
@@ -257,6 +258,7 @@ export default function App() {
   const [passPredictions, setPassPredictions] = useState([])
   const [passStatus, setPassStatus] = useState('idle')
   const [isPassListExpanded, setIsPassListExpanded] = useState(false)
+  const [isSatelliteListExpanded, setIsSatelliteListExpanded] = useState(false)
 
   const worldGrid = useMemo(() => buildWorldGrid(), [])
 
