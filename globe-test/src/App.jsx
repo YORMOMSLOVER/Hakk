@@ -193,6 +193,7 @@ function buildSpaceDiagram(position) {
 
 export default function App() {
   const globeContainerRef = useRef(null)
+  const globeMountRef = useRef(null)
   const globeInstanceRef = useRef(null)
   const mapViewportRef = useRef(null)
   const dragStateRef = useRef(null)
@@ -241,8 +242,9 @@ export default function App() {
 
   useEffect(() => {
     const containerElement = globeContainerRef.current
+    const mountElement = globeMountRef.current
 
-    if (!containerElement || globeInstanceRef.current) return undefined
+    if (!containerElement || !mountElement || globeInstanceRef.current) return undefined
 
     let cancelled = false
     setGlobeStatus('loading')
@@ -250,9 +252,9 @@ export default function App() {
     const bootGlobe = async () => {
       try {
         const { default: Globe } = await import('globe.gl')
-        if (cancelled || !containerElement) return
+        if (cancelled || !mountElement) return
 
-        const globe = Globe()(containerElement)
+        const globe = Globe()(mountElement)
           .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
           .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
           .showAtmosphere(true)
@@ -320,7 +322,7 @@ export default function App() {
 
     return () => {
       cancelled = true
-      containerElement.innerHTML = ''
+      mountElement.replaceChildren()
       globeInstanceRef.current = null
     }
   }, [])
@@ -1131,6 +1133,7 @@ export default function App() {
             className={`globe-canvas ${globeViewport.isPortrait ? 'is-portrait' : ''}`}
             style={{ minHeight: globeViewport.height || undefined }}
           >
+            <div ref={globeMountRef} className="globe-canvas__mount" />
             {globeStatus !== 'ready' ? (
               <div className="globe-canvas__status">
                 {globeStatus === 'error'

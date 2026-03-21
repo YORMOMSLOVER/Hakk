@@ -750,6 +750,11 @@ input {
   position: relative;
 }
 
+.globe-canvas__mount {
+  position: absolute;
+  inset: 0;
+}
+
 .globe-canvas__status {
   position: absolute;
   inset: 0;
